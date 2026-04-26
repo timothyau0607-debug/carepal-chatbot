@@ -6,6 +6,7 @@ import {
   fetchProfileRow,
   getOrCreateProfile,
 } from "@/lib/carepal/memory-store";
+import { sanitizeDisplayName } from "@/lib/carepal/display-name";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 const DEFAULT_WHEN_NO_DB = {
@@ -140,7 +141,7 @@ export async function PATCH(request: Request) {
     updated_at: new Date().toISOString(),
   };
   if (typeof body.display_name === "string")
-    patch.display_name = body.display_name.slice(0, 200);
+    patch.display_name = sanitizeDisplayName(body.display_name);
   if (typeof body.family_notes === "string")
     patch.family_notes = body.family_notes.slice(0, 2000);
   if (typeof body.mood_note === "string")

@@ -6,6 +6,7 @@ import {
   todayDateTaipei,
   upsertTodayStaffFeed,
 } from "@/lib/carepal/staff-feed";
+import { sanitizeDisplayName } from "@/lib/carepal/display-name";
 import { isPlaceholderStaffSatisfaction } from "@/lib/carepal/visit-staff-nudge";
 import type { UserRole } from "@/lib/carepal/user-role";
 
@@ -16,7 +17,6 @@ const MAX_PREF = 1800;
 const MAX_TRAITS = 1500;
 const MAX_VISIT = 1200;
 const MAX_SAT = 1000;
-const MAX_DISPLAY = 64;
 
 const SYSTEM_TRIPLE = `你是資訊整理助理。任務是把「人類使用者」的長期、穩定資訊，整理成三類文字，供照護助理之後參考。
 
@@ -41,10 +41,11 @@ const SYSTEM_TRIPLE = `你是資訊整理助理。任務是把「人類使用者
 - **inferred**、**preferences**、**traits** 的意義同前；字數上限略同。
 
 ## 欄位 **display_name**
-- **只依「你：」本輪**：若**本輪**明確**說出**希望被稱呼的稱呼、姓名、暱稱，填**一個**精簡字串，供寫入資料庫；否則**空字串**。**不可**從「小晴：」臆測。
+- **只依「你：」本輪**：若**本輪**明確**說出**希望被稱呼的稱呼、姓名、暱稱，填**一個**精簡字串，供寫入資料庫；否則**空字串**。**不可**從「小晴：」臆測；**禁止**「...」「…」刪節號或**純標點**佔位。
 
 ## 輸出格式
-只回傳 JSON：{"inferred":"…","preferences":"…","traits":"…","display_name":"…"}`;
+只回傳 JSON，**欄內可為真實內文**；**display_name 若本輪無自稱則用 ""，禁止**填刪節號「...」「…」或**純標點**佔位。
+只回傳 JSON：{"inferred":"擔心家中長輩夜間安全","preferences":"喜歡具體步驟","traits":"語速快、易緊張","display_name":""}`;
 
 const SYSTEM_FAMILY_PATIENT = `你是資訊整理助理。使用場景多為**醫院內**（家屬或病友與小晴對談）。請把「人類使用者」的長期資訊與**今日到院脈絡**整理到下列欄位，並產生一份**可給醫護人員參考**的短摘要（僅基於**你：**之後的內容，不可把小晴的台詞寫成使用者的讚美）。
 
@@ -60,7 +61,7 @@ const SYSTEM_FAMILY_PATIENT = `你是資訊整理助理。使用場景多為**�
 - 每一段要寫入的字串，必須能在「你：」的原文中指認；**只**在「小晴：」出現的句子**一律刪除**；for_staff 的讚美/提問**僅**能使用者**自己**說過的。
 
 ## 欄位說明
-- **display_name**：**只依「你：」本輪**——若使用者在**本輪****明確**說出希望被稱呼的姓名、暱稱、稱呼（如「叫我阿公」「我姓林」「就叫我美玲姐」則取**美玲姐**等），填**一個**精簡稱呼，供系統**寫入資料庫**；**若本輪沒有**、或僅有含糊語氣**不可**斷定，**必須**留**空字串**。**嚴禁**從「小晴：」的話推測、**嚴禁**與**你：**無關的臆測。
+- **display_name**：**只依「你：」本輪**——若使用者在**本輪****明確**說出希望被稱呼的姓名、暱稱、稱呼（如「叫我阿公」「我姓林」「就叫我美玲姐」則取**美玲姐**等），填**一個**精簡稱呼，供系統**寫入資料庫**；**若本輪沒有**、或僅有含糊語氣**不可**斷定，**必須**留**空字串**。**嚴禁**從「小晴：」的話推測、**嚴禁**與**你：**無關的臆測；**嚴禁**以「...」「…」刪節號或**僅**標點當佔位。
 - **inferred**：與**真人**之關係/被照顧者、關心重點、情緒與壓力（不抄衛教條文）；**已**寫入 **display_name** 的專屬稱呼**不要**在 inferred 內**整段**重複羅列，**一句**帶過即可。
 - **preferences**：飲食、興趣、想怎麼被溝通等。
 - **traits**：性格、表達風格。
@@ -83,7 +84,8 @@ const SYSTEM_FAMILY_PATIENT = `你是資訊整理助理。使用場景多為**�
 - 關係欄、情境欄，**絕對**不可出現「關係：小晴」或把小晴寫成被照顧者；**不可**把小晴的衛教長文、條列、摘要**當成**使用者的敘事寫入。
 
 ## 輸出（僅此 JSON、勿 markdown）
-{"display_name":"…","inferred":"…","preferences":"…","traits":"…","visit_context":"…","staff_interaction_satisfaction":"…","for_staff":{"one_line":"…","questions_asked":"…","praise_for_staff":"…"}}`;
+- **下例為結構示範**；內文請依本輪真實整理。**display_name 無則用 ""，禁止**刪節號「...」「…」佔位。
+{"display_name":"","inferred":"擔心奶奶自理與用藥","preferences":"","traits":"","visit_context":"心臟內科回診","staff_interaction_satisfaction":"","for_staff":{"one_line":"家屬陪診、關心返家照護","questions_asked":"藥物注意","praise_for_staff":""}}`;
 
 type Triple = {
   inferred: string;
@@ -198,16 +200,6 @@ function tryParseJsonFull(raw: string): FullPack | null {
 
 function sanitizeSplice(s: string, max: number): string {
   return s.replace(/\r\n/g, "\n").trim().slice(0, max);
-}
-
-/** 寫入 carepal_profiles.display_name；不合法則回空（不覆寫） */
-export function sanitizeDisplayName(raw: string): string {
-  let s = raw.replace(/\r\n/g, " ").replace(/\n/g, " ").trim();
-  s = s.replace(/\s{2,}/g, " ").slice(0, MAX_DISPLAY);
-  if (!s) return "";
-  if (/^(訪客|visitor|guest)$/i.test(s)) return "";
-  if (s.length > 32 && /[。！？，；]/.test(s)) return "";
-  return s;
 }
 
 function normOverlap(s: string): string {

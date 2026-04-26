@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-noto), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-mono), ui-monospace, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}
+
+/* 語音球體：靜音／收音動畫 */
+.carepal-orb {
+  width: 7rem;
+  height: 7rem;
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle at 30% 30%,
+    rgba(20, 184, 166, 0.45),
+    rgba(13, 148, 136, 0.85)
+  );
+  box-shadow: 0 0 0 0 rgba(20, 184, 166, 0.35);
+  transition: box-shadow 0.4s ease, transform 0.4s ease;
+}
+
+.carepal-orb[data-active="true"] {
+  animation: carepal-orb-pulse 1.4s ease-in-out infinite;
+  box-shadow: 0 0 40px 6px rgba(20, 184, 166, 0.45);
+}
+
+@keyframes carepal-orb-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}

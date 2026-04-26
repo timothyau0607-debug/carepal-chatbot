@@ -87,11 +87,12 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
 
   useLayoutEffect(() => {
     if (didSeedWelcome.current) return;
+    if (clientProfile === null) return;
     didSeedWelcome.current = true;
-    const welcome = initialAssistantWelcome(userRole);
+    const welcome = initialAssistantWelcome(userRole, clientProfile);
     setMessages([{ role: "assistant", content: "" }]);
     setTypewriterTarget(welcome);
-  }, [userRole]);
+  }, [userRole, clientProfile]);
 
   const ttsVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
   const onReplyCompleteRef = useRef(onReplyComplete);

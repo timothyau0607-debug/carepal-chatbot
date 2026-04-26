@@ -13,7 +13,20 @@ import {
 import {
   readLocalProfile,
   writeLocalProfile,
+  type LocalProfileSnapshot,
 } from "@/lib/carepal/local-profile";
+
+const EMPTY_CLIENT_PROFILE: LocalProfileSnapshot = {
+  display_name: "訪客",
+  family_notes: "",
+  mood_note: "",
+  inferred_profile: "",
+  preferences: "",
+  traits: "",
+  visit_context: "",
+  staff_interaction_satisfaction: "",
+  memory_lines: [],
+};
 
 const defaultRag = [
   {
@@ -884,20 +897,22 @@ export function DemoShell() {
                 : undefined
             }
             clientProfile={
-              !profile.loading
-                ? {
-                    display_name: profile.display_name,
-                    family_notes: profile.family_notes,
-                    mood_note: profile.mood_note,
-                    inferred_profile: profile.inferred_profile,
-                    preferences: profile.preferences,
-                    traits: profile.traits,
-                    visit_context: profile.visit_context,
-                    staff_interaction_satisfaction:
-                      profile.staff_interaction_satisfaction,
-                    memory_lines: profile.memory_lines,
-                  }
-                : null
+              !userKey
+                ? EMPTY_CLIENT_PROFILE
+                : !profile.loading
+                  ? {
+                      display_name: profile.display_name,
+                      family_notes: profile.family_notes,
+                      mood_note: profile.mood_note,
+                      inferred_profile: profile.inferred_profile,
+                      preferences: profile.preferences,
+                      traits: profile.traits,
+                      visit_context: profile.visit_context,
+                      staff_interaction_satisfaction:
+                        profile.staff_interaction_satisfaction,
+                      memory_lines: profile.memory_lines,
+                    }
+                  : null
             }
           />
         </section>

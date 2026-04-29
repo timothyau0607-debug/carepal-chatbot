@@ -43,6 +43,11 @@ export function formatLongTermMemoryForPrompt(
     memoryHeaderForRole(userRole),
     `稱呼或識別：${profile.display_name.trim() || "訪客"}`,
   ];
+  if (userRole === "staff") {
+    parts.push(
+      "【醫護本人對談提示】上述「稱呼或識別」為你在本對話／系統中的常用稱呼（可由你在對話中自報後更新）。「今日家屬／病友回饋」摘錄若出現指名感謝某位同仁，請對照姓名／簡稱是否與你相符後再對你個人口語轉述；對不上則只做一般正向訊息，勿硬套。"
+    );
+  }
   if (profile.inferred_profile.trim()) {
     parts.push(
       `從互動歸納的用戶畫像（長期、已整理）：\n${profile.inferred_profile.trim()}`

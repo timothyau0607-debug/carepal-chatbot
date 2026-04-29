@@ -10,7 +10,7 @@ import {
   buildLongTermSystemBlock,
 } from "@/lib/carepal/memory-store";
 import { mergeInferredProfileFromTurn } from "@/lib/carepal/profile-infer";
-import { formatTodayStaffFeedForSystemPrompt } from "@/lib/carepal/staff-feed";
+import { formatTodayStaffFeedForSystemPrompt, buildStaffPraiseTimingHint } from "@/lib/carepal/staff-feed";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   formatLocalProfileForSystemPrompt,
@@ -149,6 +149,15 @@ export async function POST(request: Request) {
     }
   }
 
+  const staffPraiseTimingHint =
+    userRole === "staff"
+      ? buildStaffPraiseTimingHint({
+          userMessageCount,
+          lastUserText: lastUser.content,
+          hasStaffFeed: staffFeedBlock.trim().length > 0,
+        })
+      : "";
+
   const llm = createChatLlm();
   if (llm) {
     try {
@@ -156,6 +165,7 @@ export async function POST(request: Request) {
         XIAOQING_SYSTEM,
         audiencePreamble,
         staffFeedBlock,
+        staffPraiseTimingHint,
         memoryForPrompt,
         `參考資料（可引用，勿捏造未列內容）：\n${ragText}`,
         // 與人設中「短句、同理、少條列」並存時，避免模型為聊天感而略過實證內容
@@ -177,7 +187,9 @@ export async function POST(request: Request) {
         ? 520
         : nudgeOn && (userRole === "family" || userRole === "patient")
           ? 320
-          : 220;
+          : staffPraiseTimingHint.trim().length > 0
+            ? 300
+            : 220;
       const completion = await llm.client.chat.completions.create({
         model: llm.model,
         messages: [

@@ -623,8 +623,8 @@ export function DemoShell() {
 
   if (!devMode) {
     return (
-      <div className="flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-gradient-to-b from-teal-50/50 to-stone-50">
-        <header className="flex shrink-0 items-center justify-between gap-2 border-b border-stone-200/80 bg-white/95 px-3 py-2.5 shadow-sm">
+      <div className="flex h-[100dvh] max-h-[100dvh] min-w-0 flex-col overflow-hidden bg-gradient-to-b from-teal-50/50 to-stone-50">
+        <header className="flex min-w-0 shrink-0 items-center justify-between gap-2 border-b border-stone-200/80 bg-white/95 px-3 py-2.5 shadow-sm">
           <h1 className="truncate text-base font-semibold text-stone-900">
             CarePal · 小晴
           </h1>
@@ -655,7 +655,7 @@ export function DemoShell() {
           </div>
         </div>
 
-        <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <VoicePanel
             compact
             onRagUpdate={setRagRows}
@@ -1002,7 +1002,7 @@ export function DemoShell() {
           )}
         </aside>
 
-        <section className="order-1 flex min-h-[420px] flex-col overflow-hidden border-stone-200/80 bg-gradient-to-b from-teal-50/40 to-stone-50/30 lg:order-2 lg:min-h-0">
+        <section className="order-1 flex min-h-[420px] min-w-0 flex-col overflow-hidden border-stone-200/80 bg-gradient-to-b from-teal-50/40 to-stone-50/30 lg:order-2 lg:min-h-0">
           <VoicePanel
             onRagUpdate={setRagRows}
             onActivityLine={setActivityLine}

@@ -309,8 +309,8 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
     <div
       className={
         compact
-          ? "flex w-full min-h-0 flex-1 flex-col gap-2 px-1 pb-1"
-          : "flex w-full max-w-lg shrink-0 flex-col gap-3 px-2 pb-4"
+          ? "flex min-h-0 w-full min-w-0 max-w-full flex-1 flex-col gap-2 overflow-x-hidden px-1 pb-1"
+          : "flex w-full max-w-lg min-w-0 shrink-0 flex-col gap-3 px-2 pb-4"
       }
     >
       {!compact && (
@@ -332,8 +332,8 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
         aria-label="對話內容"
         className={
           compact
-            ? "min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-y-contain rounded-xl border border-stone-200/90 bg-white/95 p-2.5 text-sm text-stone-800 shadow-inner [scrollbar-gutter:stable]"
-            : "h-80 min-h-0 shrink-0 space-y-3 overflow-y-auto overscroll-y-contain scroll-smooth rounded-xl border border-stone-200/90 bg-white/90 p-3 text-sm text-stone-800 shadow-inner [scrollbar-gutter:stable]"
+            ? "min-h-0 min-w-0 flex-1 space-y-2 overflow-y-auto overflow-x-hidden overscroll-y-contain rounded-xl border border-stone-200/90 bg-white/95 p-2.5 text-sm text-stone-800 shadow-inner [scrollbar-gutter:stable]"
+            : "h-80 min-h-0 shrink-0 space-y-3 overflow-y-auto overflow-x-hidden overscroll-y-contain scroll-smooth rounded-xl border border-stone-200/90 bg-white/90 p-3 text-sm text-stone-800 shadow-inner [scrollbar-gutter:stable]"
         }
       >
         {messages.length === 0 && (
@@ -348,15 +348,23 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
             key={i}
             className={
               m.role === "user"
-                ? "ml-4 rounded-lg bg-teal-50/90 px-3 py-2 text-stone-800"
-                : "mr-4 rounded-lg bg-stone-100/90 px-3 py-2.5 text-stone-800"
+                ? "flex justify-end"
+                : "flex justify-start"
             }
           >
-            <p className="text-xs text-stone-500">
-              {m.role === "user" ? "你" : "小晴"} ·
-            </p>
-            <div className="mt-1">
-              <FormattedMessageBody role={m.role} content={m.content} />
+            <div
+              className={
+                m.role === "user"
+                  ? "max-w-[min(22rem,calc(100%-0.25rem))] min-w-0 rounded-lg bg-teal-50/90 px-3 py-2 text-stone-800"
+                  : "max-w-[min(22rem,calc(100%-0.25rem))] min-w-0 rounded-lg bg-stone-100/90 px-3 py-2.5 text-stone-800"
+              }
+            >
+              <p className="text-xs text-stone-500">
+                {m.role === "user" ? "你" : "小晴"} ·
+              </p>
+              <div className="mt-1 min-w-0">
+                <FormattedMessageBody role={m.role} content={m.content} />
+              </div>
             </div>
           </div>
         ))}
@@ -377,31 +385,35 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
       <label
         className={
           compact
-            ? "flex min-h-0 shrink-0 cursor-pointer select-none items-center gap-2 text-[0.7rem] text-stone-600"
+            ? "grid w-full min-w-0 shrink-0 cursor-pointer select-none grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2 gap-y-1 text-[0.7rem] text-stone-600"
             : "flex min-h-0 shrink-0 cursor-pointer select-none items-center justify-center gap-2 text-xs text-stone-600"
         }
       >
-        <input
-          type="checkbox"
-          className="rounded border-stone-300"
-          checked={readAloud}
-          onChange={(e) => {
-            if (!e.target.checked) {
-              ttsIndexRef.current = -1;
-              if (typeof window !== "undefined" && "speechSynthesis" in window) {
-                window.speechSynthesis.cancel();
+        <span className="flex shrink-0 items-start gap-2 pt-0.5">
+          <input
+            type="checkbox"
+            className="rounded border-stone-300"
+            checked={readAloud}
+            onChange={(e) => {
+              if (!e.target.checked) {
+                ttsIndexRef.current = -1;
+                if (typeof window !== "undefined" && "speechSynthesis" in window) {
+                  window.speechSynthesis.cancel();
+                }
               }
-            }
-            setReadAloud(e.target.checked);
-          }}
-        />
-        {readAloud ? (
-          <Volume2 className="size-3 shrink-0 text-teal-600" />
-        ) : (
-          <VolumeX className="size-3 shrink-0 text-stone-400" />
-        )}
+              setReadAloud(e.target.checked);
+            }}
+          />
+          {readAloud ? (
+            <Volume2 className="size-3 shrink-0 text-teal-600" />
+          ) : (
+            <VolumeX className="size-3 shrink-0 text-stone-400" />
+          )}
+        </span>
         {compact ? (
-          <span>朗讀小晴回覆（會暫停收音）</span>
+          <span className="min-w-0 leading-snug">
+            朗讀小晴回覆（會暫停收音）
+          </span>
         ) : (
           <>
             朗讀小晴最後一則回覆：會
@@ -415,14 +427,14 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
       </label>
 
       <form
-        className="flex shrink-0 gap-2"
+        className="flex w-full min-w-0 shrink-0 gap-2"
         onSubmit={(e) => {
           e.preventDefault();
           void submitUserText(text);
         }}
       >
         <input
-          className="min-w-0 flex-1 rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm text-stone-800 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+          className="min-w-0 flex-1 rounded-xl border border-stone-200 bg-white px-2 py-2 text-sm text-stone-800 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 sm:px-3"
           placeholder="輸入想問的照護問題…"
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -433,10 +445,10 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
         <button
           type="submit"
           disabled={loading || assistantTyping || !text.trim()}
-          className="inline-flex shrink-0 items-center justify-center gap-1 rounded-xl bg-teal-600 px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-teal-500 disabled:cursor-not-allowed disabled:opacity-50"
+          className={`inline-flex shrink-0 items-center justify-center gap-1 rounded-xl bg-teal-600 font-medium text-white shadow-sm transition hover:bg-teal-500 disabled:cursor-not-allowed disabled:opacity-50 ${compact ? "px-2.5 py-2 text-sm" : "px-3 py-2 text-sm"}`}
         >
-          <Send className="size-4" aria-hidden />
-          送出
+          <Send className="size-4 shrink-0" aria-hidden />
+          <span className={compact ? "sr-only" : undefined}>送出</span>
         </button>
       </form>
     </div>

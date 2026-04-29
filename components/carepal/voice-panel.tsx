@@ -162,9 +162,11 @@ export function VoicePanel({
       {stt.clientReady && !stt.supported ? (
         <div className="w-full px-0.5">{micControls}</div>
       ) : (
-        <div className="flex flex-row items-center justify-center gap-2">
+        <div className="flex max-w-full min-w-0 flex-row flex-wrap items-center justify-center gap-2">
           {orbEl}
-          {micControls}
+          <div className="flex min-w-0 max-w-full shrink items-center justify-center">
+            {micControls}
+          </div>
         </div>
       )}
     </>
@@ -213,12 +215,14 @@ export function VoicePanel({
   if (compact) {
     return (
       <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="flex min-h-0 flex-1 flex-col">{chatEl}</div>
-        <div className="shrink-0 border-t border-stone-200/80 bg-teal-50/50 px-2 pb-2 pt-1">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          {chatEl}
+        </div>
+        <div className="w-full min-w-0 shrink-0 overflow-x-hidden border-t border-stone-200/80 bg-teal-50/50 px-2 pb-2 pt-1">
           <p className="mb-1 text-center text-[0.6rem] leading-tight text-stone-500">
             語音 · Chrome／Edge／HTTPS
           </p>
-          <div className="flex flex-col items-center gap-1">{micBlock}</div>
+          <div className="flex w-full max-w-full min-w-0 flex-col items-center gap-1">{micBlock}</div>
         </div>
       </div>
     );

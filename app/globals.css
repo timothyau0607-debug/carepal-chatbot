@@ -39,6 +39,12 @@ body {
   transition: box-shadow 0.4s ease, transform 0.4s ease;
 }
 
+/* Demo 緊湊列：小球體，節省對話區高度 */
+.carepal-orb--compact {
+  width: 2.75rem;
+  height: 2.75rem;
+}
+
 .carepal-orb[data-active="true"] {
   animation: carepal-orb-pulse 1.4s ease-in-out infinite;
   box-shadow: 0 0 40px 6px rgba(20, 184, 166, 0.45);

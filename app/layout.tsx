@@ -28,7 +28,9 @@ export default function RootLayout({
       lang="zh-Hant"
       className={`${notoSansTC.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col font-sans">{children}</body>
+      <body className="flex min-h-full min-w-0 flex-col overflow-x-clip font-sans">
+        {children}
+      </body>
     </html>
   );
 }

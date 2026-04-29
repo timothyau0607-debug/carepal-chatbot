@@ -625,10 +625,12 @@ export function DemoShell() {
     return (
       <div className="flex h-[100dvh] max-h-[100dvh] min-w-0 flex-col overflow-hidden bg-gradient-to-b from-teal-50/50 to-stone-50">
         <header className="flex min-w-0 shrink-0 items-center justify-between gap-2 border-b border-stone-200/80 bg-white/95 px-3 py-2.5 shadow-sm">
-          <h1 className="truncate text-base font-semibold text-stone-900">
-            CarePal · 小晴
-          </h1>
-          {devToggle}
+          <div className="min-w-0 flex-1 pr-1">
+            <h1 className="truncate text-base font-semibold text-stone-900">
+              CarePal · 小晴
+            </h1>
+          </div>
+          <div className="shrink-0">{devToggle}</div>
         </header>
 
         <div className="shrink-0 border-b border-stone-100 bg-white/80 px-3 py-2">

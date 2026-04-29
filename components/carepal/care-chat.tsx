@@ -332,7 +332,7 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
         aria-label="對話內容"
         className={
           compact
-            ? "min-h-0 min-w-0 flex-1 space-y-2 overflow-y-auto overflow-x-hidden overscroll-y-contain rounded-xl border border-stone-200/90 bg-white/95 p-2.5 text-sm text-stone-800 shadow-inner [scrollbar-gutter:stable]"
+            ? "min-h-0 min-w-0 flex-1 space-y-2 overflow-y-auto overflow-x-hidden overscroll-y-contain rounded-xl border border-stone-200/90 bg-white/95 p-2.5 text-sm text-stone-800 shadow-inner"
             : "h-80 min-h-0 shrink-0 space-y-3 overflow-y-auto overflow-x-hidden overscroll-y-contain scroll-smooth rounded-xl border border-stone-200/90 bg-white/90 p-3 text-sm text-stone-800 shadow-inner [scrollbar-gutter:stable]"
         }
       >
@@ -434,7 +434,7 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
         }}
       >
         <input
-          className="min-w-0 flex-1 rounded-xl border border-stone-200 bg-white px-2 py-2 text-sm text-stone-800 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 sm:px-3"
+          className="min-w-0 flex-1 rounded-xl border border-stone-200 bg-white px-2 py-2 text-sm text-stone-800 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-teal-500 sm:px-3"
           placeholder="輸入想問的照護問題…"
           value={text}
           onChange={(e) => setText(e.target.value)}

@@ -62,7 +62,7 @@ export function FormattedMessageBody({
 
   const blocks = text.split(/\n{2,}/);
   return (
-    <div className="space-y-3 text-[15px] leading-relaxed text-stone-800 [text-wrap:pretty]">
+    <div className="min-w-0 space-y-3 break-words text-[15px] leading-relaxed text-stone-800 [overflow-wrap:anywhere] [text-wrap:pretty]">
       {blocks.map((block, bi) => {
         const trimmed = block.trim();
         if (!trimmed) return null;
@@ -75,7 +75,7 @@ export function FormattedMessageBody({
           return (
             <ol
               key={bi}
-              className="ml-0 list-outside list-decimal space-y-2 pl-5 marker:font-medium marker:text-stone-600 [padding-inline-start:1.1rem]"
+              className="list-inside list-decimal space-y-2 pl-0 marker:font-medium marker:text-stone-600"
             >
               {lines.map((line, li) => {
                 const m = line.match(LIST_RE);
@@ -93,7 +93,7 @@ export function FormattedMessageBody({
         }
 
         return (
-          <p key={bi} className="mb-0 last:mb-0">
+          <p key={bi} className="mb-0 break-words last:mb-0">
             {trimmed.split("\n").map((line, li) => (
               <Fragment key={li}>
                 {li > 0 ? <br /> : null}

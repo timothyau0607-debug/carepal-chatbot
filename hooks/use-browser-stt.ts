@@ -32,6 +32,8 @@ export function useBrowserStt({ onFinal, onError }: Options) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recRef = useRef<any>(null);
   const finalsRef = useRef<string[]>([]);
+  /** iOS WebKit 常有辨識結果始終非 final、僅 interim，onend 時 finals 為空 — 備援此同步緩存 */
+  const interimRef = useRef("");
   const listeningRef = useRef(false);
   const sessionOpenRef = useRef(false);
   const userCancelledRef = useRef(false);
@@ -54,6 +56,7 @@ export function useBrowserStt({ onFinal, onError }: Options) {
     try {
       userCancelledRef.current = false;
       finalsRef.current = [];
+      interimRef.current = "";
       setInterim("");
       setStatus("listening");
       listeningRef.current = true;
@@ -100,16 +103,21 @@ export function useBrowserStt({ onFinal, onError }: Options) {
     r.continuous = false;
 
     r.onresult = (e) => {
+      // 非 final：掃描整個 results（iOS/WebKit 若只從 resultIndex 起算會漏字）
       let inter = "";
-      for (let i = e.resultIndex; i < e.results.length; i++) {
+      for (let i = 0; i < e.results.length; i++) {
         const part = e.results[i]!;
-        const piece = part[0].transcript;
-        if (part.isFinal) {
-          finalsRef.current.push(piece);
-        } else {
-          inter += piece;
+        if (!part.isFinal) {
+          inter += part[0].transcript;
         }
       }
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const part = e.results[i]!;
+        if (part.isFinal) {
+          finalsRef.current.push(part[0].transcript);
+        }
+      }
+      interimRef.current = inter;
       setInterim(inter);
     };
 
@@ -143,10 +151,13 @@ export function useBrowserStt({ onFinal, onError }: Options) {
       }
 
       listeningRef.current = false;
+      const finalsPart = finalsRef.current.join("").replace(/\s+/g, " ").trim();
+      finalsRef.current = [];
+      const interimFallback = interimRef.current.replace(/\s+/g, " ").trim();
+      interimRef.current = "";
       setInterim("");
       setStatus("idle");
-      const text = finalsRef.current.join("").replace(/\s+/g, " ").trim();
-      finalsRef.current = [];
+      const text = finalsPart || interimFallback;
 
       if (userCancelledRef.current) {
         userCancelledRef.current = false;

@@ -164,6 +164,42 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
     });
   }, []);
 
+  /** API 已取得完整回覆時立即播出（不依賴逐字顯示結束），較接近即時對話 */
+  const playReadAloudForFullReply = useCallback(
+    (rawReply: string, assistantMessageIndex: number) => {
+      if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+      if (!readAloudRef.current) return;
+      const ttsText = plainTextForSpeechFromAssistant(rawReply);
+      if (!ttsText.trim()) {
+        ttsIndexRef.current = assistantMessageIndex;
+        return;
+      }
+      ttsIndexRef.current = assistantMessageIndex;
+      window.speechSynthesis.cancel();
+      onBeforeTtsRef.current?.();
+      const u = new SpeechSynthesisUtterance(ttsText);
+      const voice =
+        ttsVoiceRef.current ??
+        pickXiaoqingVoice(window.speechSynthesis.getVoices());
+      if (voice) {
+        u.voice = voice;
+        u.lang = voice.lang && voice.lang.length > 0 ? voice.lang : "zh-TW";
+      } else {
+        u.lang = "zh-TW";
+      }
+      u.rate = XIAOQING_TTS.rate;
+      u.pitch = XIAOQING_TTS.pitch;
+      u.onend = () => {
+        if (readAloudRef.current) onAfterTtsRef.current?.();
+      };
+      u.onerror = () => {
+        if (readAloudRef.current) onAfterTtsRef.current?.();
+      };
+      window.speechSynthesis.speak(u);
+    },
+    []
+  );
+
   const submitUserText = useCallback(
     async (raw: string) => {
       const t = raw.trim();
@@ -217,7 +253,9 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
           ...prev,
           { role: "assistant", content: "" },
         ]);
-        setTypewriterTarget(data.reply ?? "");
+        const reply = data.reply ?? "";
+        setTypewriterTarget(reply);
+        playReadAloudForFullReply(reply, next.length);
       } catch {
         setError("網路錯誤，請再試一次。");
         setLoading(false);
@@ -232,6 +270,7 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
       userKey,
       userRole,
       clientProfile,
+      playReadAloudForFullReply,
     ]
   );
 
@@ -260,33 +299,8 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
     const m = messages[last];
     if (m?.role !== "assistant") return;
     if (ttsIndexRef.current === last) return;
-    ttsIndexRef.current = last;
-    window.speechSynthesis.cancel();
-    onBeforeTtsRef.current?.();
-    const ttsText =
-      m.role === "assistant"
-        ? plainTextForSpeechFromAssistant(m.content)
-        : m.content;
-    const u = new SpeechSynthesisUtterance(ttsText);
-    const voice =
-      ttsVoiceRef.current ??
-      pickXiaoqingVoice(window.speechSynthesis.getVoices());
-    if (voice) {
-      u.voice = voice;
-      u.lang = voice.lang && voice.lang.length > 0 ? voice.lang : "zh-TW";
-    } else {
-      u.lang = "zh-TW";
-    }
-    u.rate = XIAOQING_TTS.rate;
-    u.pitch = XIAOQING_TTS.pitch;
-    u.onend = () => {
-      if (readAloudRef.current) onAfterTtsRef.current?.();
-    };
-    u.onerror = () => {
-      if (readAloudRef.current) onAfterTtsRef.current?.();
-    };
-    window.speechSynthesis.speak(u);
-  }, [messages, readAloud, loading, assistantTyping]);
+    playReadAloudForFullReply(m.content, last);
+  }, [messages, readAloud, loading, assistantTyping, playReadAloudForFullReply]);
 
   return (
     <div className="flex w-full max-w-lg shrink-0 flex-col gap-3 px-2 pb-4">

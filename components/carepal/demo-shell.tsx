@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { BookOpen, HeartPulse, StickyNote, Trash2, Users } from "lucide-react";
 import { VoicePanel } from "./voice-panel";
 import { ApiStatus } from "./api-status";
 import { useCarePalIdentity } from "@/hooks/use-carepal-identity";
+import { useCarePalDevMode } from "@/hooks/use-carepal-dev-mode";
 import {
   USER_ROLES,
   USER_ROLE_LABEL,
@@ -96,6 +97,7 @@ function emptyFocusPlaceholder(role: UserRole): string {
 
 export function DemoShell() {
   const { userKey, userRole, setUserRole } = useCarePalIdentity();
+  const { devMode, setDevMode } = useCarePalDevMode();
   const [ragRows, setRagRows] = useState<RagRow[] | null>(null);
   const [activityLine, setActivityLine] = useState("剛剛：尚未開始對話");
   const [profile, setProfile] = useState<ProfileView>(() => emptyProfile());
@@ -109,16 +111,45 @@ export function DemoShell() {
   const [editMood, setEditMood] = useState("");
   const [newMemoryLine, setNewMemoryLine] = useState("");
   const [saving, setSaving] = useState(false);
+  /** 切換身分或新載入時遞增，捨棄過期的 loadProfile 回寫（避免家屬資料寫回護士 UI） */
+  const profileLoadGenerationRef = useRef(0);
+
+  const resetProfileFormsForIdentitySwitch = useCallback(() => {
+    setProfile(emptyProfile());
+    setRagRows(null);
+    setEditName("");
+    setEditInferred("");
+    setEditPreferences("");
+    setEditTraits("");
+    setEditVisit("");
+    setEditStaffSat("");
+    setEditFamily("");
+    setEditMood("");
+    setNewMemoryLine("");
+    setActivityLine("剛剛：尚未開始對話");
+  }, []);
+
+  const handleRoleChange = useCallback(
+    (id: UserRole) => {
+      profileLoadGenerationRef.current += 1;
+      resetProfileFormsForIdentitySwitch();
+      setUserRole(id);
+    },
+    [resetProfileFormsForIdentitySwitch, setUserRole]
+  );
 
   const loadProfile = useCallback(async () => {
     if (!userKey) return;
+    const token = ++profileLoadGenerationRef.current;
     await Promise.resolve();
-    setProfile((p) => ({ ...p, loading: true, error: null, info: null }));
+    if (token !== profileLoadGenerationRef.current) return;
+    setProfile(emptyProfile());
     const local = readLocalProfile(userKey, userRole);
     try {
       const res = await fetch(
         `/api/carepal/profile?userKey=${encodeURIComponent(userKey)}&userRole=${encodeURIComponent(userRole)}`
       );
+      if (token !== profileLoadGenerationRef.current) return;
       const data = (await res.json()) as {
         error?: string;
         syncWarning?: string;
@@ -136,6 +167,7 @@ export function DemoShell() {
           memory_lines: { content: string }[];
         };
       };
+      if (token !== profileLoadGenerationRef.current) return;
       const cloudHint = data.syncWarning ?? null;
       if (!res.ok) {
         if (local) {
@@ -260,6 +292,7 @@ export function DemoShell() {
       setEditFamily(data.profile.family_notes);
       setEditMood(data.profile.mood_note);
     } catch {
+      if (token !== profileLoadGenerationRef.current) return;
       if (local) {
         setProfile({
           supabase: false,
@@ -576,11 +609,95 @@ export function DemoShell() {
       ? profile.memory_lines.map((l) => l.content).join("；")
       : null;
 
+  const devToggle = (
+    <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-xs text-stone-700 shadow-sm select-none">
+      <input
+        type="checkbox"
+        className="rounded border-stone-400"
+        checked={devMode}
+        onChange={(e) => setDevMode(e.target.checked)}
+      />
+      <span className="font-medium">開發模式</span>
+    </label>
+  );
+
+  if (!devMode) {
+    return (
+      <div className="flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-gradient-to-b from-teal-50/50 to-stone-50">
+        <header className="flex shrink-0 items-center justify-between gap-2 border-b border-stone-200/80 bg-white/95 px-3 py-2.5 shadow-sm">
+          <h1 className="truncate text-base font-semibold text-stone-900">
+            CarePal · 小晴
+          </h1>
+          {devToggle}
+        </header>
+
+        <div className="shrink-0 border-b border-stone-100 bg-white/80 px-3 py-2">
+          <p className="mb-2 text-[0.65rem] text-stone-500">身分（示範）</p>
+          <div
+            className="grid grid-cols-3 gap-1.5"
+            role="group"
+            aria-label="目前使用者身分"
+          >
+            {USER_ROLES.map((id) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => handleRoleChange(id)}
+                className={
+                  userRole === id
+                    ? "rounded-lg border-2 border-teal-600 bg-teal-50 px-1 py-1.5 text-center text-[0.7rem] font-medium text-teal-900"
+                    : "rounded-lg border border-stone-200 bg-white px-1 py-1.5 text-center text-[0.7rem] font-medium text-stone-600 shadow-sm"
+                }
+              >
+                {USER_ROLE_LABEL[id].short}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <VoicePanel
+            compact
+            onRagUpdate={setRagRows}
+            onActivityLine={setActivityLine}
+            userKey={userKey}
+            userRole={userRole}
+            onReplyComplete={
+              profile.supabase && !profile.loading
+                ? () => {
+                    window.setTimeout(() => void loadProfile(), 1600);
+                  }
+                : undefined
+            }
+            clientProfile={
+              !userKey
+                ? EMPTY_CLIENT_PROFILE
+                : !profile.loading
+                  ? {
+                      display_name: profile.display_name,
+                      family_notes: profile.family_notes,
+                      mood_note: profile.mood_note,
+                      inferred_profile: profile.inferred_profile,
+                      preferences: profile.preferences,
+                      traits: profile.traits,
+                      visit_context: profile.visit_context,
+                      staff_interaction_satisfaction:
+                        profile.staff_interaction_satisfaction,
+                      memory_lines: profile.memory_lines,
+                    }
+                  : null
+            }
+          />
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-full flex-1 flex-col">
       <header className="border-b border-stone-200/80 bg-white/90 px-4 py-4 shadow-sm backdrop-blur md:px-8">
-        <div className="mx-auto flex max-w-6xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
+        <div className="mx-auto flex max-w-6xl flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 flex-1">
             <h1 className="text-lg font-semibold text-stone-900 md:text-xl">
               CarePal · 失智症照護語音助理（Web Demo）
             </h1>
@@ -589,7 +706,10 @@ export function DemoShell() {
               向量 RAG 與瀏覽器語音；長期記憶可經由 Supabase 儲存（見 .env）。
             </p>
           </div>
-          <ApiStatus />
+          <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-center">
+            {devToggle}
+            <ApiStatus />
+          </div>
         </div>
       </header>
 
@@ -611,7 +731,7 @@ export function DemoShell() {
               <button
                 key={id}
                 type="button"
-                onClick={() => setUserRole(id)}
+                onClick={() => handleRoleChange(id)}
                 className={
                   userRole === id
                     ? "rounded-lg border-2 border-teal-600 bg-teal-50 px-1.5 py-2 text-center text-xs font-medium text-teal-900"

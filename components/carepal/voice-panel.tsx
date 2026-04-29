@@ -17,6 +17,8 @@ type Props = {
   /** 本機或已載入畫像，供對話併入脈絡（未接雲端時仍有效） */
   clientProfile: LocalProfileSnapshot | null;
   onReplyComplete?: () => void;
+  /** false = 對外 Demo：對話優先、版面緊湊 */
+  compact?: boolean;
 };
 
 const RESUME_MIC_AFTER_TTS_MS = 450;
@@ -28,6 +30,7 @@ export function VoicePanel({
   userRole,
   clientProfile,
   onReplyComplete,
+  compact = false,
 }: Props) {
   const chatRef = useRef<CareChatHandle>(null);
   const [sttError, setSttError] = useState<string | null>(null);
@@ -69,26 +72,34 @@ export function VoicePanel({
     []
   );
 
-  return (
-    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col items-center gap-3 overflow-hidden px-4 py-6">
-      <p className="text-center text-sm text-stone-500">
-        麥克風使用
-        <strong>瀏覽器語音辨識</strong>（以 Chrome / Edge 為佳），需
-        <strong> HTTPS 或本機</strong>。按一次開啟
-        <strong>連續收音</strong>：每說完一句、停頓後會
-        <strong>自動傳送</strong>，並
-        <strong>繼續聽下一句</strong>，直到再按一次
-        <strong>關閉收音</strong>。
-      </p>
+  const micBlock = (
+    <>
+      {!compact && (
+        <p className="text-center text-sm text-stone-500">
+          麥克風使用
+          <strong>瀏覽器語音辨識</strong>（以 Chrome / Edge 為佳），需
+          <strong> HTTPS 或本機</strong>。按一次開啟
+          <strong>連續收音</strong>：每說完一句、停頓後會
+          <strong>自動傳送</strong>，並
+          <strong>繼續聽下一句</strong>，直到再按一次
+          <strong>關閉收音</strong>。
+        </p>
+      )}
 
       <div
-        className="carepal-orb"
+        className={`carepal-orb shrink-0 ${compact ? "scale-90" : ""}`}
         data-active={stt.sessionOpen}
         aria-hidden
       />
 
       {stt.interim && (
-        <p className="max-w-md rounded-lg border border-dashed border-teal-300/80 bg-white/60 px-3 py-1.5 text-center text-sm text-stone-600">
+        <p
+          className={
+            compact
+              ? "max-w-full truncate rounded-lg border border-dashed border-teal-300/80 bg-white/60 px-2 py-1 text-center text-xs text-stone-600"
+              : "max-w-md rounded-lg border border-dashed border-teal-300/80 bg-white/60 px-3 py-1.5 text-center text-sm text-stone-600"
+          }
+        >
           辨識中：{stt.interim}
         </p>
       )}
@@ -99,16 +110,18 @@ export function VoicePanel({
         </p>
       )}
 
-      <div className="flex flex-col items-center gap-2">
+      <div className={`flex flex-col items-center gap-2 ${compact ? "gap-1" : ""}`}>
         {!stt.clientReady ? (
           <>
             <div
-              className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-stone-200 text-stone-500"
+              className={`inline-flex items-center justify-center rounded-full bg-stone-200 text-stone-500 ${compact ? "h-11 w-11" : "h-14 w-14"}`}
               aria-hidden
             >
-              <MicOff className="size-6" />
+              <MicOff className={compact ? "size-5" : "size-6"} />
             </div>
-            <span className="text-center text-xs text-stone-400">載入語音模組中…</span>
+            <span className="text-center text-xs text-stone-400">
+              載入語音模組中…
+            </span>
           </>
         ) : stt.supported ? (
           <>
@@ -118,21 +131,33 @@ export function VoicePanel({
                 setSttError(null);
                 stt.toggleSession();
               }}
-              className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-teal-600 text-white shadow-lg shadow-teal-600/30 transition hover:bg-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
+              className={`inline-flex items-center justify-center rounded-full bg-teal-600 text-white shadow-lg shadow-teal-600/30 transition hover:bg-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 ${compact ? "h-11 w-11" : "h-14 w-14"}`}
               aria-pressed={stt.sessionOpen}
             >
               {stt.sessionOpen ? (
-                <Mic className="size-6" />
+                <Mic className={compact ? "size-5" : "size-6"} />
               ) : (
-                <MicOff className="size-6" />
+                <MicOff className={compact ? "size-5" : "size-6"} />
               )}
             </button>
-            <span className="max-w-xs text-center text-xs text-stone-500">
+            <span
+              className={
+                compact
+                  ? "max-w-[280px] text-center text-[0.65rem] leading-snug text-stone-500"
+                  : "max-w-xs text-center text-xs text-stone-500"
+              }
+            >
               {stt.sessionOpen
                 ? stt.isListening
-                  ? "本句辨識中，停頓後自動送出並繼續下一句；再點鈕關閉收音"
-                  : "接續下一句中…可再點鈕關閉收音"
-                : "按一下開啟連續收音；再按關閉"}
+                  ? compact
+                    ? "辨識中，停頓後送出"
+                    : "本句辨識中，停頓後自動送出並繼續下一句；再點鈕關閉收音"
+                  : compact
+                    ? "聽下一句…"
+                    : "接續下一句中…可再點鈕關閉收音"
+                : compact
+                  ? "連續收音：開／關"
+                  : "按一下開啟連續收音；再按關閉"}
             </span>
           </>
         ) : (
@@ -143,19 +168,43 @@ export function VoicePanel({
           </p>
         )}
       </div>
+    </>
+  );
 
-      <CareChat
-        key={`${userKey ?? "k"}-${userRole}`}
-        ref={chatRef}
-        onRagUpdate={onRagUpdate}
-        onActivityLine={onActivityLine}
-        userKey={userKey}
-        userRole={userRole}
-        clientProfile={clientProfile}
-        onReplyComplete={onReplyComplete}
-        onBeforeTtsPlay={pauseMicForTts}
-        onAfterTtsPlay={resumeMicAfterTts}
-      />
+  const chatEl = (
+    <CareChat
+      key={`${userKey ?? "k"}-${userRole}`}
+      ref={chatRef}
+      onRagUpdate={onRagUpdate}
+      onActivityLine={onActivityLine}
+      userKey={userKey}
+      userRole={userRole}
+      clientProfile={clientProfile}
+      onReplyComplete={onReplyComplete}
+      onBeforeTtsPlay={pauseMicForTts}
+      onAfterTtsPlay={resumeMicAfterTts}
+      compact={compact}
+    />
+  );
+
+  if (compact) {
+    return (
+      <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="flex min-h-0 flex-1 flex-col">{chatEl}</div>
+        <div className="shrink-0 border-t border-stone-200/80 bg-teal-50/50 px-3 pb-4 pt-2">
+          <p className="mb-1.5 text-center text-[0.65rem] text-stone-500">
+            語音（Chrome／Edge／HTTPS）
+          </p>
+          <div className="flex flex-col items-center">{micBlock}</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col items-center gap-3 overflow-hidden px-4 py-6">
+      {micBlock}
+      {chatEl}
     </div>
   );
 }

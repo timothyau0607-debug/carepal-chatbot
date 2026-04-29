@@ -47,6 +47,8 @@ type Props = {
   onBeforeTtsPlay?: () => void;
   /** 朗讀自然結束或失敗時觸發（可於此恢復先前方才關閉的麥克風） */
   onAfterTtsPlay?: () => void;
+  /** 手機 Demo：隱藏開發說明、縮短欄位 */
+  compact?: boolean;
 };
 
 const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
@@ -59,6 +61,7 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
     onReplyComplete,
     onBeforeTtsPlay,
     onAfterTtsPlay,
+    compact = false,
   },
   ref
 ) {
@@ -303,25 +306,41 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
   }, [messages, readAloud, loading, assistantTyping, playReadAloudForFullReply]);
 
   return (
-    <div className="flex w-full max-w-lg shrink-0 flex-col gap-3 px-2 pb-4">
-      <p className="shrink-0 text-center text-xs text-stone-500">
-        已串接
-        <strong className="font-medium"> 語音辨識（瀏覽器）</strong>
-        與文字。LLM 需
-        <code className="mx-0.5 rounded bg-stone-200/60 px-1">OPENROUTER_API_KEY</code>
-        等，見 .env.local。
-      </p>
+    <div
+      className={
+        compact
+          ? "flex w-full min-h-0 flex-1 flex-col gap-2 px-1 pb-1"
+          : "flex w-full max-w-lg shrink-0 flex-col gap-3 px-2 pb-4"
+      }
+    >
+      {!compact && (
+        <p className="shrink-0 text-center text-xs text-stone-500">
+          已串接
+          <strong className="font-medium"> 語音辨識（瀏覽器）</strong>
+          與文字。LLM 需
+          <code className="mx-0.5 rounded bg-stone-200/60 px-1">
+            OPENROUTER_API_KEY
+          </code>
+          等，見 .env.local。
+        </p>
+      )}
 
       <div
         ref={listRef}
         role="log"
         aria-relevant="additions"
         aria-label="對話內容"
-        className="h-80 min-h-0 shrink-0 space-y-3 overflow-y-auto overscroll-y-contain scroll-smooth rounded-xl border border-stone-200/90 bg-white/90 p-3 text-sm text-stone-800 shadow-inner [scrollbar-gutter:stable]"
+        className={
+          compact
+            ? "min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-y-contain rounded-xl border border-stone-200/90 bg-white/95 p-2.5 text-sm text-stone-800 shadow-inner [scrollbar-gutter:stable]"
+            : "h-80 min-h-0 shrink-0 space-y-3 overflow-y-auto overscroll-y-contain scroll-smooth rounded-xl border border-stone-200/90 bg-white/90 p-3 text-sm text-stone-800 shadow-inner [scrollbar-gutter:stable]"
+        }
       >
         {messages.length === 0 && (
           <p className="text-stone-500">
-            可打字或點麥克風說話。例如：「阿公傍晚一直想出門怎麼辦？」
+            {compact
+              ? "打字或語音問小晴。"
+              : "可打字或點麥克風說話。例如：「阿公傍晚一直想出門怎麼辦？」"}
           </p>
         )}
         {messages.map((m, i) => (
@@ -355,7 +374,13 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
         </p>
       )}
 
-      <label className="flex min-h-0 shrink-0 cursor-pointer select-none items-center justify-center gap-2 text-xs text-stone-600">
+      <label
+        className={
+          compact
+            ? "flex min-h-0 shrink-0 cursor-pointer select-none items-center gap-2 text-[0.7rem] text-stone-600"
+            : "flex min-h-0 shrink-0 cursor-pointer select-none items-center justify-center gap-2 text-xs text-stone-600"
+        }
+      >
         <input
           type="checkbox"
           className="rounded border-stone-300"
@@ -371,16 +396,22 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
           }}
         />
         {readAloud ? (
-          <Volume2 className="size-3.5 text-teal-600" />
+          <Volume2 className="size-3 shrink-0 text-teal-600" />
         ) : (
-          <VolumeX className="size-3.5 text-stone-400" />
+          <VolumeX className="size-3 shrink-0 text-stone-400" />
         )}
-        朗讀小晴最後一則回覆：會
-        <strong>優先選繁中台灣女聲</strong>並微調節奏（仍依瀏覽器／
-        OS 內建引擎）。若要人設穩定，日後可改接
-        <strong>雲端 TTS</strong>。朗讀時會
-        <strong>暫關麥克風</strong>；讀畢、且朗讀前本來有開連續收音者會
-        <strong>自動再開</strong>（短暫間隔，減少回音）。
+        {compact ? (
+          <span>朗讀小晴回覆（會暫停收音）</span>
+        ) : (
+          <>
+            朗讀小晴最後一則回覆：會
+            <strong>優先選繁中台灣女聲</strong>並微調節奏（仍依瀏覽器／
+            OS 內建引擎）。若要人設穩定，日後可改接
+            <strong>雲端 TTS</strong>。朗讀時會
+            <strong>暫關麥克風</strong>；讀畢、且朗讀前本來有開連續收音者會
+            <strong>自動再開</strong>（短暫間隔，減少回音）。
+          </>
+        )}
       </label>
 
       <form

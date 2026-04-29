@@ -434,7 +434,11 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
         }}
       >
         <input
-          className="min-w-0 flex-1 rounded-xl border border-stone-200 bg-white px-2 py-2 text-sm text-stone-800 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-teal-500 sm:px-3"
+          className={
+            compact
+              ? "min-w-0 flex-1 rounded-xl border border-stone-200 bg-white px-3 py-2 text-base leading-snug text-stone-800 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-teal-500"
+              : "min-w-0 flex-1 rounded-xl border border-stone-200 bg-white px-2 py-2 text-sm text-stone-800 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-teal-500 sm:px-3"
+          }
           placeholder="輸入想問的照護問題…"
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -445,7 +449,7 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
         <button
           type="submit"
           disabled={loading || assistantTyping || !text.trim()}
-          className={`inline-flex shrink-0 items-center justify-center gap-1 rounded-xl bg-teal-600 font-medium text-white shadow-sm transition hover:bg-teal-500 disabled:cursor-not-allowed disabled:opacity-50 ${compact ? "px-2.5 py-2 text-sm" : "px-3 py-2 text-sm"}`}
+          className={`inline-flex shrink-0 items-center justify-center gap-1 rounded-xl bg-teal-600 font-medium text-white shadow-sm transition hover:bg-teal-500 disabled:cursor-not-allowed disabled:opacity-50 ${compact ? "min-h-[2.75rem] px-3 py-2 text-base" : "px-3 py-2 text-sm"}`}
         >
           <Send className="size-4 shrink-0" aria-hidden />
           <span className={compact ? "sr-only" : undefined}>送出</span>

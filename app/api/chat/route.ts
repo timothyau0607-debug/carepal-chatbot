@@ -21,6 +21,7 @@ import {
   hasRecordedStaffSatisfactionInPrompt,
   replyMentionsVisitOrStaffCare,
   shouldSkipHardStaffCareLead,
+  shouldSuppressRepeatedStaffCareHardAppend,
   STAFF_CARE_LEAD,
   STAFF_PRAISE_NUDGE_MIN_USER_MESSAGES,
 } from "@/lib/carepal/visit-staff-nudge";
@@ -122,12 +123,18 @@ export async function POST(request: Request) {
   const useCloudMemory = longTermBlock.trim().length > 0;
   const memoryForPrompt = useCloudMemory ? longTermBlock : clientBlock;
 
+  const suppressRepeatedVisitStaffAsk =
+    shouldSuppressRepeatedStaffCareHardAppend(messages);
+
   const staffSatisfactionNudge = buildStaffSatisfactionNudge(
     userRole,
     useCloudMemory,
     memoryForPrompt,
     userMessageCount,
-    body.clientProfile
+    body.clientProfile,
+    suppressRepeatedVisitStaffAsk
+      ? { suppressRepeatedVisitStaffAsk: true }
+      : undefined
   );
 
   let staffFeedBlock = "";
@@ -163,6 +170,7 @@ export async function POST(request: Request) {
       const nudgeOn = staffSatisfactionNudge.trim().length > 0;
       const needRoomForStaffNudge =
         nudgeOn &&
+        !suppressRepeatedVisitStaffAsk &&
         (userRole === "family" || userRole === "patient") &&
         userMessageCount >= STAFF_PRAISE_NUDGE_MIN_USER_MESSAGES;
       const maxOutTokens = needRoomForStaffNudge
@@ -185,6 +193,7 @@ export async function POST(request: Request) {
       let out = completion.choices[0]?.message?.content?.trim() ?? "";
       if (
         needRoomForStaffNudge &&
+        !suppressRepeatedVisitStaffAsk &&
         !hasRecordedStaffSatisfactionInPrompt(
           useCloudMemory,
           memoryForPrompt,

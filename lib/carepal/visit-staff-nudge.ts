@@ -84,6 +84,68 @@ export function hasRecordedStaffSatisfactionInPrompt(
   return shouldOmitNudge(useCloudMemory, memoryForPrompt, fromClient);
 }
 
+/** 小晴上一則是否已出現「到院／看診／醫護櫃台」類關心問句（含後端硬補模板）。 */
+export function assistantAskedVisitStaffCareQuestion(content: string): boolean {
+  const t = content.replace(/[\r\n\t]+/g, " ");
+  return (
+    /順道多關心一下/.test(t) ||
+    /今天到院.{0,24}看診.{0,16}(還算)?順利/.test(t) ||
+    /和醫護.{0,12}櫃台.{0,16}(那邊)?.{0,8}(還行|順心)/.test(t)
+  );
+}
+
+/**
+ * 使用者是否在承接「到院／醫護櫃台」話題（含具體描述、簡短情緒與禮貌婉拒繼續談）。
+ */
+export function userEngagedVisitStaffTopic(text: string): boolean {
+  const t = text.replace(/\s+/g, " ").trim();
+  if (!t) return false;
+  if (replyMentionsVisitOrStaffCare(t)) return true;
+  if (
+    /(不想談|先別問|別問這個|不用問|跳過|先不用|換個話題)/.test(t)
+  ) {
+    return true;
+  }
+  if (
+    t.length <= 56 &&
+    /^(嗯|噢|喔)?[，、,\s]*(還好|順利|尚可|OK|還行|差不多|普通|不太好|不太順|不太方便|很累|一路順|排隊很久|人都很好)/i.test(
+      t
+    )
+  ) {
+    return true;
+  }
+  if (
+    /^(好[的呀哈]?[啊呀]?|行[啊呀哈]?|ok|明白[了]?[啊呀哈]?|了解[了]?[啊呀哈]?|知道[了]?[啊呀哈]?|恩|嗯|謝(謝|你)?|收到|清楚[了]?)[\s。!！…]*$/i.test(
+      t
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * 緊接在小晴問過「到院／醫護櫃台」之後，使用者未承接時：**不要**再硬補同一串問句。
+ */
+export function shouldSuppressRepeatedStaffCareHardAppend(
+  messages: { role: string; content: string }[]
+): boolean {
+  const last = messages[messages.length - 1];
+  if (!last || last.role !== "user") return false;
+  let prevAssistant: string | undefined;
+  for (let i = messages.length - 2; i >= 0; i--) {
+    const m = messages[i];
+    if (m?.role === "assistant") {
+      prevAssistant = m.content;
+      break;
+    }
+  }
+  if (!prevAssistant || !assistantAskedVisitStaffCareQuestion(prevAssistant)) {
+    return false;
+  }
+  return !userEngagedVisitStaffTopic(last.content);
+}
+
 /** 到院、與院內人員/櫃台相關的關心或敘述（**不含**單純「醫療團隊」通才衛教句）。 */
 export function replyMentionsVisitOrStaffCare(s: string): boolean {
   const t = s.replace(/[\r\n\t]+/g, " ");
@@ -139,18 +201,29 @@ export const STAFF_PRAISE_NUDGE_MIN_USER_MESSAGES = 3;
  * 家屬／病友且畫像裡**尚無**醫護互動感受時，併入 system，要求模型
  * 依對話深淺分階段：前幾則**不**主動追問醫護道謝；夠多輪後再併到院＋醫護互動。
  */
+export type StaffSatisfactionNudgeOptions = {
+  /** 上一則已問到院／醫護且使用者未承接 → 勿再「必含」反覆問 */
+  suppressRepeatedVisitStaffAsk?: boolean;
+};
+
 export function buildStaffSatisfactionNudge(
   userRole: UserRole,
   useCloudMemory: boolean,
   memoryForPrompt: string,
   userMessageCount: number,
-  clientProfile?: { staff_interaction_satisfaction?: string } | null
+  clientProfile?: { staff_interaction_satisfaction?: string } | null,
+  options?: StaffSatisfactionNudgeOptions
 ): string {
   if (userRole !== "family" && userRole !== "patient") return "";
 
   const fromClient = clientProfile?.staff_interaction_satisfaction?.trim() ?? "";
   if (shouldOmitNudge(useCloudMemory, memoryForPrompt, fromClient)) {
     return "";
+  }
+
+  if (options?.suppressRepeatedVisitStaffAsk) {
+    return `【本則回覆（家屬/病友；**勿反覆問到院／醫護櫃台**）】
+你**先前一則**已用相近語氣問過「今天到院／看診」或「醫護、櫃台是否順利」，而對方**未正面回覆**、**只敷衍**或**改談其他主題**。**本則禁止**再用**同一長問句或同樣套語**反覆追問；**除非**對方**本則主動**談到院、流程或與醫護／櫃台互動，否則**專心**回應對方此刻的具體問題與情緒即可，**頂多**一句簡短承接，**不要**再開問卷式關心。`;
   }
 
   if (userMessageCount < STAFF_PRAISE_NUDGE_MIN_USER_MESSAGES) {

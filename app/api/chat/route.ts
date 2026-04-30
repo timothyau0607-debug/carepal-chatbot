@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { xiaoqingSystemForRole } from "@/lib/carepal/persona";
 import { createChatLlm } from "@/lib/carepal/llm";
-import { formatRagForPrompt } from "@/lib/carepal/rag-match";
+import { formatRagForPrompt, isRagPromptProbablyEmpty } from "@/lib/carepal/rag-match";
 import { retrieveRag } from "@/lib/carepal/rag-retrieve";
+import { isSubstantiveDementiaCareQuestion } from "@/lib/carepal/substantive-care-question";
 import { isValidUserKey } from "@/lib/carepal/user-key";
 import { audiencePreambleForRole, parseUserRole } from "@/lib/carepal/user-role";
 import {
@@ -79,6 +80,7 @@ export async function POST(request: Request) {
 
   const ranked = await retrieveRag(lastUser.content, 5);
   const ragText = formatRagForPrompt(ranked);
+  const hasRagSnippets = !isRagPromptProbablyEmpty(ragText);
   const sources = ranked.slice(0, 5).map((r) => ({
     source: r.chunk.source,
     snippet: r.chunk.text.slice(0, 150) + (r.chunk.text.length > 150 ? "…" : ""),
@@ -87,6 +89,8 @@ export async function POST(request: Request) {
   const userRole = parseUserRole(body.userRole, "family");
   const audiencePreamble = audiencePreambleForRole(userRole);
   const userMessageCount = messages.filter((m) => m.role === "user").length;
+  const substantiveCareQuestion =
+    isSubstantiveDementiaCareQuestion(lastUser.content);
 
   let longTermBlock = "";
   if (isValidUserKey(body.userKey)) {
@@ -161,15 +165,27 @@ export async function POST(request: Request) {
   const llm = createChatLlm();
   if (llm) {
     try {
+      const ragReferenceBlock = `參考資料（可引用，勿捏造未列內容）：\n${ragText}`;
+      const ragGroundingRule =
+        "若參考資料與本輪使用者所問的主題相關，事實、步驟與用語仍須以參考資料為準；可維持溫短口吻，但不可略過關鍵要點。僅在參考資料明顯與本輪無關時，再依情緒陪伴為主。";
+      const ragGroundingStrong = substantiveCareQuestion
+        ? "【參考資料優先】以下片段若與本輪問題有關，回覆須**融入**其中要點並說清楚（可數句或數點，可不標出處）；切勿只用泛泛常識帶過。若明顯無關，不要硬套。"
+        : "【參考資料優先】以下片段若與使用者本輪問題有關，回覆須至少反映其中一項具體要點（一句即可，可不標出處）；切勿只用模型自身的泛泛常識帶過。若明顯無關，不要硬套。";
+
+      const substantiveCareHint = substantiveCareQuestion
+        ? "【本輪判斷】使用者正在問失智／照護相關**實質問題**：請依人設【篇幅—失智／照護實質提問】給**較完整、讀得懂**的答案；**勿**只回一兩句敷衍。仍遵守安全邊界與參考資料。"
+        : "";
+
       const systemParts = [
         xiaoqingSystemForRole(userRole),
         audiencePreamble,
+        ragReferenceBlock,
+        ...(hasRagSnippets ? [ragGroundingStrong] : []),
+        ragGroundingRule,
+        substantiveCareHint,
         staffFeedBlock,
         staffPraiseTimingHint,
         memoryForPrompt,
-        `參考資料（可引用，勿捏造未列內容）：\n${ragText}`,
-        // 與人設中「短句、同理、少條列」並存時，避免模型為聊天感而略過實證內容
-        "若參考資料與本輪使用者所問的主題相關，事實、步驟與用語仍須以參考資料為準；可維持溫短口吻，但不可略過關鍵要點。僅在參考資料明顯與本輪無關時，再依情緒陪伴為主。",
       ].filter((s) => s && s.trim().length > 0);
       if (staffSatisfactionNudge.trim()) {
         systemParts.push(
@@ -183,13 +199,18 @@ export async function POST(request: Request) {
         !suppressRepeatedVisitStaffAsk &&
         (userRole === "family" || userRole === "patient") &&
         userMessageCount >= STAFF_PRAISE_NUDGE_MIN_USER_MESSAGES;
-      const maxOutTokens = needRoomForStaffNudge
+      let maxOutTokens = needRoomForStaffNudge
         ? 520
         : nudgeOn && (userRole === "family" || userRole === "patient")
           ? 320
           : staffPraiseTimingHint.trim().length > 0
             ? 300
             : 220;
+
+      if (substantiveCareQuestion) {
+        const floor = userRole === "staff" ? 640 : 840;
+        maxOutTokens = Math.max(maxOutTokens, floor);
+      }
       const completion = await llm.client.chat.completions.create({
         model: llm.model,
         messages: [

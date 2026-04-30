@@ -56,8 +56,10 @@ export function keywordTopK(
     return { chunk: c, score: s };
   });
 
-  return scored
+  const positive = scored
     .filter((x) => x.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, k);
+    .sort((a, b) => b.score - a.score);
+  if (positive.length > 0) return positive.slice(0, k);
+
+  return scored.sort((a, b) => b.score - a.score).slice(0, k);
 }

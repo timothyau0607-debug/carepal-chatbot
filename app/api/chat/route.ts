@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { XIAOQING_SYSTEM } from "@/lib/carepal/persona";
+import { xiaoqingSystemForRole } from "@/lib/carepal/persona";
 import { createChatLlm } from "@/lib/carepal/llm";
 import { formatRagForPrompt } from "@/lib/carepal/rag-match";
 import { retrieveRag } from "@/lib/carepal/rag-retrieve";
@@ -162,7 +162,7 @@ export async function POST(request: Request) {
   if (llm) {
     try {
       const systemParts = [
-        XIAOQING_SYSTEM,
+        xiaoqingSystemForRole(userRole),
         audiencePreamble,
         staffFeedBlock,
         staffPraiseTimingHint,

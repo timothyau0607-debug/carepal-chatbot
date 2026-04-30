@@ -16,6 +16,9 @@ type Options = {
 
 const RESTART_MS = 220;
 
+/** 收音開啟後若長時間無辨識輸入（無 onresult），自動關閉連續收音 */
+const IDLE_SESSION_CLOSE_MS = 60_000;
+
 /**
  * Web Speech API，zh-TW。`continuous: false` = 短暫停頓則一輪結束、可帶出文字。
  * **連續工作階段**：用戶按一下開啟「收音」→ 每完成一句即自動送出，並在短延遲後繼續聽下一句；
@@ -38,7 +41,10 @@ export function useBrowserStt({ onFinal, onError }: Options) {
   const sessionOpenRef = useRef(false);
   const userCancelledRef = useRef(false);
   const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const idleCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const beginRoundRef = useRef<() => void>(() => {});
+  const endSessionRef = useRef<() => void>(() => {});
+  const scheduleIdleCloseTimerRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     queueMicrotask(() => setClientReady(true));
@@ -48,6 +54,22 @@ export function useBrowserStt({ onFinal, onError }: Options) {
     onFinalRef.current = onFinal;
     onErrorRef.current = onError;
   }, [onFinal, onError]);
+
+  const clearIdleCloseTimer = useCallback(() => {
+    if (idleCloseTimerRef.current) {
+      clearTimeout(idleCloseTimerRef.current);
+      idleCloseTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleIdleCloseTimer = useCallback(() => {
+    clearIdleCloseTimer();
+    idleCloseTimerRef.current = setTimeout(() => {
+      idleCloseTimerRef.current = null;
+      if (!sessionOpenRef.current) return;
+      endSessionRef.current();
+    }, IDLE_SESSION_CLOSE_MS);
+  }, [clearIdleCloseTimer]);
 
   const beginListeningRound = useCallback(() => {
     if (!recRef.current) return;
@@ -62,13 +84,18 @@ export function useBrowserStt({ onFinal, onError }: Options) {
       listeningRef.current = true;
       recRef.current.start();
     } catch {
+      clearIdleCloseTimer();
       setStatus("error");
       listeningRef.current = false;
       sessionOpenRef.current = false;
       setSessionOpen(false);
       onErrorRef.current?.("無法啟動語音辨識。請關閉後再開啟收一次。");
     }
-  }, []);
+  }, [clearIdleCloseTimer]);
+
+  useEffect(() => {
+    scheduleIdleCloseTimerRef.current = scheduleIdleCloseTimer;
+  }, [scheduleIdleCloseTimer]);
 
   useEffect(() => {
     beginRoundRef.current = beginListeningRound;
@@ -103,6 +130,7 @@ export function useBrowserStt({ onFinal, onError }: Options) {
     r.continuous = false;
 
     r.onresult = (e) => {
+      scheduleIdleCloseTimerRef.current();
       // 非 final：掃描整個 results（iOS/WebKit 若只從 resultIndex 起算會漏字）
       let inter = "";
       for (let i = 0; i < e.results.length; i++) {
@@ -129,6 +157,7 @@ export function useBrowserStt({ onFinal, onError }: Options) {
       }
       listeningRef.current = false;
       if (e.error === "not-allowed") {
+        clearIdleCloseTimer();
         sessionOpenRef.current = false;
         setSessionOpen(false);
         setStatus("error");
@@ -139,6 +168,7 @@ export function useBrowserStt({ onFinal, onError }: Options) {
         return;
       }
       setStatus("error");
+      clearIdleCloseTimer();
       sessionOpenRef.current = false;
       setSessionOpen(false);
       onErrorRef.current?.(e.error);
@@ -179,6 +209,7 @@ export function useBrowserStt({ onFinal, onError }: Options) {
 
     recRef.current = r;
     return () => {
+      clearIdleCloseTimer();
       if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
       try {
         r.abort();
@@ -187,7 +218,7 @@ export function useBrowserStt({ onFinal, onError }: Options) {
       }
       recRef.current = null;
     };
-  }, []);
+  }, [clearIdleCloseTimer]);
 
   const startSession = useCallback(() => {
     if (!recRef.current) return;
@@ -195,9 +226,11 @@ export function useBrowserStt({ onFinal, onError }: Options) {
     sessionOpenRef.current = true;
     setSessionOpen(true);
     beginListeningRound();
-  }, [beginListeningRound]);
+    scheduleIdleCloseTimer();
+  }, [beginListeningRound, scheduleIdleCloseTimer]);
 
   const endSession = useCallback(() => {
+    clearIdleCloseTimer();
     if (restartTimerRef.current) {
       clearTimeout(restartTimerRef.current);
       restartTimerRef.current = null;
@@ -216,7 +249,11 @@ export function useBrowserStt({ onFinal, onError }: Options) {
     } else {
       userCancelledRef.current = false;
     }
-  }, []);
+  }, [clearIdleCloseTimer]);
+
+  useEffect(() => {
+    endSessionRef.current = endSession;
+  }, [endSession]);
 
   const toggleSession = useCallback(() => {
     if (sessionOpenRef.current) {

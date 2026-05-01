@@ -88,15 +88,22 @@ export function proactiveCareTipLeadForRole(role: UserRole): string {
   return formatProactiveTipLead(role, tip);
 }
 
-/** 將 RAG 或自訂摘錄包成與開場「小錦囊」相同口吻的一句（不含尾隨空格） */
+/** 將 RAG 或自訂摘錄包成與開場「小錦囊」相同口吻；多行正文保留換行（條列可正常顯示）。 */
 export function formatProactiveTipLead(role: UserRole, excerpt: string): string {
-  const e = excerpt.replace(/\s+/g, " ").trim();
-  if (!e) return "";
-  if (role === "family") {
-    return `今天先分享一個照顧小錦囊：${e}`;
-  }
-  if (role === "patient") {
-    return `今天先分享一個小錦囊：${e}`;
-  }
-  return "";
+  const normalized = excerpt
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+/g, " ").trimEnd())
+    .join("\n")
+    .trim();
+  if (!normalized) return "";
+  const lead =
+    role === "family"
+      ? "今天先分享一個照顧小錦囊："
+      : role === "patient"
+        ? "今天先分享一個小錦囊："
+        : "";
+  if (!lead) return normalized;
+  if (normalized.includes("\n")) return `${lead}\n\n${normalized}`;
+  return `${lead}${normalized}`;
 }

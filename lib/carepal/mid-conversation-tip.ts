@@ -87,7 +87,12 @@ export function buildMidConversationTipSystemBlock(params: {
 }): string {
   const label =
     params.role === "family" ? "照顧小錦囊" : "小錦囊";
-  const e = params.excerpt.replace(/\s+/g, " ").trim();
+  const e = params.excerpt
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+/g, " ").trimEnd())
+    .join("\n")
+    .trim();
   return [
     `【本輪—可選${label}】使用者本輪**偏閒聊、沒有具體照護或失智相關提問**。請**先**同理、接住對方一句，再在**適當轉折**處**口語、簡短**帶一則新的「${label}」（下附摘錄；一至三句即可）。**不要**像播報列表或打斷對方情緒主軸；**不要**硬稱「這是第二個錦囊」。摘錄僅供參考，緊急或個別狀況仍應就醫。`,
     `摘錄：${e}`,

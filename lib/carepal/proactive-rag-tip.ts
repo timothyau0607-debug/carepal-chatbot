@@ -82,30 +82,61 @@ export function pickTipChunkFromRanked(
   return slice[ix] ?? slice[0] ?? null;
 }
 
-const CARE_TIP_HOOKS_FAMILY = [
-  "今天先收一則照顧小錦囊：",
-  "照護路上記一筆，之後用得到：",
-  "給你帶一句實用提醒：",
-  "先擱一則貼近日常的照顧心法：",
-];
+/**
+ * 去掉衛教 chunk 裡不宜朗讀／不像錦囊的 meta：PDF 出處、頁碼、撰文、OCR 頁眉頁腳等。
+ * 可重複套用；不負責萃取「答：」（見 extractAnswerBodyForTip）。
+ */
+function stripRagMetadataNoiseForTip(input: string): string {
+  let s = input.replace(/\r\n/g, "\n");
 
-const CARE_TIP_HOOKS_PATIENT = [
-  "先替你收一則小提醒：",
-  "這則小錦囊給你參考：",
-  "照顧自己時可以記著：",
-  "給你一句可帶在身邊的提醒：",
-];
+  s = s.replace(
+    /[（(]\s*摘自\s*[《「][^》」\n]+[》」][^）\n]*?第\s*\d+\s*頁[^）\n]*[）)]/g,
+    " "
+  );
+  s = s.replace(/[（(]\s*摘自[^）\n]{1,240}[）)]/g, " ");
+  s = s.replace(/《[^》\n]{0,200}\.pdf[^》\n]{0,80}》/gi, " ");
+  s = s.replace(/\.pdf\b/gi, " ");
+  s = s.replace(/已壓縮/g, " ");
 
-function pickCareTipHook(role: "family" | "patient", raw: string): string {
-  const pool =
-    role === "patient" ? CARE_TIP_HOOKS_PATIENT : CARE_TIP_HOOKS_FAMILY;
-  const ix = hashDateString(`hook:${raw.slice(0, 96)}`) % pool.length;
-  return pool[ix]!;
+  s = s.replace(
+    /(?:^|[\n。；])\s*\d{0,4}\s*撰文\s*[／\/╱]\s*[^\n]+/gm,
+    (m) => (m.includes("\n") ? "\n" : " ")
+  );
+  s = s.replace(/撰文\s*[／\/╱]\s*[^\n。；!！?？]{1,80}/g, " ");
+
+  s = s.replace(/(?:^|[\n\s，。；])(?:\d{1,4}\s*伍\s*)+/g, " ");
+  s = s.replace(/(?:^|\s)\d{2,4}\s+(?=撰文)/g, " ");
+  s = s.replace(/(?:^|[\s，。；])(?:\d{1,4}\s+){2,5}(?=[\u4e00-\u9fff「『])/g, " ");
+
+  s = s.replace(/(^|[。！？；\s\n])([A-Z])([\u4e00-\u9fff])/g, "$1$3");
+
+  s = s.replace(/第\s*\d{1,4}\s*頁/g, " ");
+  s = s.replace(/[ \t\f\v\u00a0]+/g, " ");
+  s = s.replace(/\n{3,}/g, "\n\n");
+  return s.trim();
+}
+
+function stillLooksLikeSourceDump(s: string): boolean {
+  return /摘自|\.pdf\b|撰文\s*[／\/╱]|第\s*\d{1,4}\s*頁|\d{1,3}\s*伍\b/.test(s);
+}
+
+function cleanTipPointFragment(p: string): string {
+  return stripRagMetadataNoiseForTip(p).replace(/^\d+[).、．]\s*/, "").trim();
+}
+
+function isUsableTipPoint(p: string): boolean {
+  const t = cleanTipPointFragment(p);
+  if (t.length < 14) return false;
+  if (stillLooksLikeSourceDump(t)) return false;
+  const digitRatio =
+    (t.match(/\d/g) ?? []).length / Math.max(1, t.replace(/\s/g, "").length);
+  if (digitRatio > 0.35) return false;
+  return true;
 }
 
 /** 從 RAG 片段取出「答：」正文，並去掉常見 Q&A／分類標籤。 */
 function extractAnswerBodyForTip(raw: string): string {
-  let s = raw.replace(/\r\n/g, "\n").trim();
+  let s = stripRagMetadataNoiseForTip(raw.replace(/\r\n/g, "\n")).trim();
   s = s.replace(/(?:^|\n)分類[：:][^\n]*/g, "\n").trim();
   const aLine = s.match(/答[：:]\s*([\s\S]+?)(?=\n問[：:]|$)/);
   if (aLine) {
@@ -120,7 +151,7 @@ function extractAnswerBodyForTip(raw: string): string {
   s = s.replace(/\*\*([^*]+)\*\*/g, "$1");
   s = s.replace(/[ \t]+/g, " ");
   s = s.replace(/\n+/g, " ").trim();
-  return s;
+  return stripRagMetadataNoiseForTip(s);
 }
 
 function stripLeadingEnumeration(text: string): string {
@@ -128,8 +159,17 @@ function stripLeadingEnumeration(text: string): string {
 }
 
 function splitBodyIntoTipPoints(body: string): string[] {
-  const minSeg = 10;
   const maxPoints = 4;
+
+  const inlineChunks = body.split(
+    /\s+\d{1,2}\.\s+(?=[\u4e00-\u9fff「『《])/
+  );
+  if (inlineChunks.length >= 2) {
+    const pts = inlineChunks
+      .map((c) => cleanTipPointFragment(c.trim()))
+      .filter(isUsableTipPoint);
+    if (pts.length >= 2) return pts.slice(0, maxPoints);
+  }
 
   const listy = body.match(
     /(?:可(?:以)?嘗試|可以試著|建議|不妨|小提醒)[：:]\s*(.+)/
@@ -138,27 +178,33 @@ function splitBodyIntoTipPoints(body: string): string[] {
     const tail = listy[1]!;
     const parts = tail
       .split(/[、；;，,]/)
-      .map((p) => stripLeadingEnumeration(p.trim()))
-      .filter((p) => p.length >= minSeg);
+      .map((p) => cleanTipPointFragment(stripLeadingEnumeration(p.trim())))
+      .filter(isUsableTipPoint);
     if (parts.length >= 2) return parts.slice(0, maxPoints);
   }
 
   const bySentence = body
     .split(/(?<=[。！？])\s*/)
     .map((x) =>
-      stripLeadingEnumeration(x.replace(/[。！？\s]+$/g, "").trim())
+      cleanTipPointFragment(
+        stripLeadingEnumeration(x.replace(/[。！？\s]+$/g, "").trim())
+      )
     )
-    .filter((x) => x.length >= minSeg);
+    .filter(isUsableTipPoint);
   if (bySentence.length >= 2) return bySentence.slice(0, maxPoints);
 
   const bySemi = body
     .split(/[；;]/)
-    .map((x) => stripLeadingEnumeration(x.trim()))
-    .filter((x) => x.length >= minSeg);
+    .map((x) =>
+      cleanTipPointFragment(stripLeadingEnumeration(x.trim()))
+    )
+    .filter(isUsableTipPoint);
   if (bySemi.length >= 2) return bySemi.slice(0, maxPoints);
 
-  const one = stripLeadingEnumeration(body.replace(/[。；]+$/g, "").trim());
-  return one.length >= minSeg ? [one] : [];
+  const one = cleanTipPointFragment(
+    stripLeadingEnumeration(body.replace(/[。；]+$/g, "").trim())
+  );
+  return isUsableTipPoint(one) ? [one] : [];
 }
 
 function softTruncateAtPunctuation(text: string, maxLen: number): string {
@@ -178,16 +224,47 @@ function softTruncateAtPunctuation(text: string, maxLen: number): string {
 
 function fitCareTipToMaxLen(body: string, maxLen: number): string {
   if (body.length <= maxLen) return body;
+
+  const lines = body
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const allNumbered =
+    lines.length >= 2 &&
+    lines.every((l) => /^\d{1,2}\.\s/.test(l));
+  if (allNumbered) {
+    let kept = [...lines];
+    while (kept.join("\n").length > maxLen && kept.length > 1) {
+      kept = kept.slice(0, -1);
+    }
+    let joined = kept.join("\n");
+    if (joined.length <= maxLen) return joined;
+    const lastLine = kept[kept.length - 1]!;
+    const m = lastLine.match(/^(\d{1,2}\.\s)([\s\S]*)$/);
+    if (m) {
+      const prefix = m[1]!;
+      const content = m[2]!;
+      const budget = Math.max(
+        24,
+        maxLen - (joined.length - content.length)
+      );
+      const trunc = softTruncateAtPunctuation(content, budget);
+      kept = [...kept.slice(0, -1), prefix + trunc];
+      return kept.join("\n");
+    }
+    return softTruncateAtPunctuation(joined, maxLen);
+  }
+
   const sep = "\n\n";
   const i = body.indexOf(sep);
   if (i === -1) return softTruncateAtPunctuation(body, maxLen);
   const head = body.slice(0, i);
   let tail = body.slice(i + sep.length);
   while (head.length + sep.length + tail.length > maxLen) {
-    const lines = tail.split("\n").filter(Boolean);
-    if (lines.length <= 1) break;
-    lines.pop();
-    tail = lines.join("\n");
+    const tailLines = tail.split("\n").filter(Boolean);
+    if (tailLines.length <= 1) break;
+    tailLines.pop();
+    tail = tailLines.join("\n");
   }
   const room = maxLen - head.length - sep.length;
   if (room < 24) return softTruncateAtPunctuation(head, maxLen);
@@ -196,31 +273,37 @@ function fitCareTipToMaxLen(body: string, maxLen: number): string {
 }
 
 /**
- * 將 RAG Q&A 改寫成「照顧小錦囊」口吻：錦囊式開頭 + 條列重點（非原文問句）。
+ * 將 RAG Q&A 收成「錦囊正文」（**不含**「今天先分享…」前綴；由 formatProactiveTipLead 統一加）。
+ * 僅條列或一段可讀衛教意涵，不帶 PDF 出處／問句標籤。
  */
 export function shapeRagChunkAsCareTipNugget(
   raw: string,
   maxLen: number,
-  role: "family" | "patient"
+  _role: "family" | "patient"
 ): string {
+  void _role;
   const body = extractAnswerBodyForTip(raw);
   if (body.replace(/…/g, "").trim().length < 15) return "";
+  if (stillLooksLikeSourceDump(body)) return "";
 
-  const hook = pickCareTipHook(role, raw);
   const points = splitBodyIntoTipPoints(body);
 
   let out: string;
   if (points.length >= 2) {
     const lines = points.map((p, i) => `${i + 1}. ${p}`);
-    out = `${hook}\n\n${lines.join("\n")}`;
+    out = lines.join("\n");
   } else if (points.length === 1) {
     const p = points[0]!;
-    out = `${hook}\n\n${p}`;
+    out = p;
   } else {
-    out = `${hook}\n\n${softTruncateAtPunctuation(body, maxLen - hook.length - 2)}`;
+    const fallback = stripRagMetadataNoiseForTip(body);
+    if (!fallback || stillLooksLikeSourceDump(fallback)) return "";
+    out = softTruncateAtPunctuation(fallback, maxLen);
   }
 
-  return fitCareTipToMaxLen(out, maxLen);
+  const cleaned = stripRagMetadataNoiseForTip(out);
+  if (!cleaned || stillLooksLikeSourceDump(cleaned)) return "";
+  return fitCareTipToMaxLen(cleaned, maxLen);
 }
 
 /**
@@ -244,13 +327,15 @@ export async function buildProactiveTipFromRag(
   const query = pickProactiveTipSeedQuery(role, dateYmd, varietySalt);
   const ranked = await retrieveRag(query, 5);
   if (ranked.length === 0) return null;
-  const picked = pickTipChunkFromRanked(ranked, varietySalt, 5);
-  if (!picked) return null;
-  const excerpt = shapeRagChunkAsCareTipNugget(
-    picked.chunk.text,
-    420,
-    role
-  );
-  if (excerpt.replace(/…/g, "").trim().length < 20) return null;
-  return { excerpt, source: picked.chunk.source };
+  const top = ranked.slice(0, 5);
+  const rot = hashDateString(`${varietySalt}:tiptry`) % top.length;
+  const order = [...top.slice(rot), ...top.slice(0, rot)];
+
+  for (const r of order) {
+    const excerpt = shapeRagChunkAsCareTipNugget(r.chunk.text, 420, role);
+    if (excerpt.replace(/…/g, "").trim().length >= 20) {
+      return { excerpt, source: r.chunk.source };
+    }
+  }
+  return null;
 }

@@ -37,14 +37,18 @@ function hashDateString(dateYmd: string): number {
 
 export function pickProactiveTipSeedQuery(
   role: "family" | "patient",
-  dateYmd: string
+  dateYmd: string,
+  varietySalt = ""
 ): string {
   const pool =
     role === "family"
       ? PROACTIVE_TIP_SEED_QUERIES_FAMILY
       : PROACTIVE_TIP_SEED_QUERIES_PATIENT;
   if (pool.length === 0) return "失智症 照顧 衛教";
-  const ix = hashDateString(`${dateYmd}:${role}`) % pool.length;
+  const key = varietySalt
+    ? `${dateYmd}:${role}:${varietySalt}`
+    : `${dateYmd}:${role}`;
+  const ix = hashDateString(key) % pool.length;
   return pool[ix]!;
 }
 
@@ -82,12 +86,15 @@ export function ragChunkTextToTipExcerpt(
   return s;
 }
 
-export async function buildProactiveTipFromRag(role: "family" | "patient"): Promise<{
+export async function buildProactiveTipFromRag(
+  role: "family" | "patient",
+  varietySalt = ""
+): Promise<{
   excerpt: string;
   source: string;
 } | null> {
   const dateYmd = todayDateTaipei();
-  const query = pickProactiveTipSeedQuery(role, dateYmd);
+  const query = pickProactiveTipSeedQuery(role, dateYmd, varietySalt);
   const ranked = await retrieveRag(query, 3);
   if (ranked.length === 0) return null;
   const top = ranked[0]!;

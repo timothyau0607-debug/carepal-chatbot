@@ -26,6 +26,8 @@ type ChatResponse = {
   reply: string;
   sources: Source[];
   mode: "llm" | "demo";
+  /** 本輪有注入「對話中段小錦囊」時，為當時的使用者訊息則數 */
+  midTipOfferedAt?: number;
 };
 
 export type CareChatHandle = {
@@ -78,6 +80,8 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
   const onBeforeTtsRef = useRef(onBeforeTtsPlay);
   const onAfterTtsRef = useRef(onAfterTtsPlay);
   const readAloudRef = useRef(readAloud);
+  /** 上一次伺服器在對話中段注入小錦囊時的 user 訊息則數；0 表示尚無 */
+  const lastProactiveTipUserCountRef = useRef(0);
   useEffect(() => {
     onBeforeTtsRef.current = onBeforeTtsPlay;
   }, [onBeforeTtsPlay]);
@@ -281,6 +285,7 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
           body: JSON.stringify({
             messages: next,
             userRole,
+            lastProactiveTipUserCount: lastProactiveTipUserCountRef.current,
             ...(userKey ? { userKey } : {}),
             ...(clientProfile
               ? {
@@ -307,6 +312,9 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
           return;
         }
         onRagUpdate(data.sources);
+        if (typeof data.midTipOfferedAt === "number") {
+          lastProactiveTipUserCountRef.current = data.midTipOfferedAt;
+        }
         setLoading(false);
         setMessages((prev) => [
           ...prev,

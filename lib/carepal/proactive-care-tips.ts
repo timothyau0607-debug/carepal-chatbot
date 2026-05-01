@@ -36,6 +36,14 @@ const CARE_TIPS_PATIENT: string[] = [
   "今天願意來醫院、願意打字或說出來，已經是很勇敢的一步了。",
 ];
 
+function hashVarietyKey(key: string): number {
+  let h = 0;
+  for (let i = 0; i < key.length; i++) {
+    h = (h * 33 + key.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
+
 function pickFromPool(pool: string[], role: "family" | "patient"): string {
   if (pool.length === 0) return "";
   if (typeof window === "undefined") {
@@ -51,6 +59,19 @@ function pickFromPool(pool: string[], role: "family" | "patient"): string {
   }
   const ix = Math.floor(Math.random() * pool.length);
   sessionStorage.setItem(key, String(ix));
+  return pool[ix]!;
+}
+
+/** 依 varietyKey 穩定選一則（供伺服器中段小錦囊 RAG 失敗時） */
+export function pickProactiveCareTipForVariety(
+  role: UserRole,
+  varietyKey: string
+): string {
+  if (role !== "family" && role !== "patient") return "";
+  const pool =
+    role === "family" ? CARE_TIPS_FAMILY : CARE_TIPS_PATIENT;
+  if (pool.length === 0) return "";
+  const ix = hashVarietyKey(`${role}:${varietyKey}`) % pool.length;
   return pool[ix]!;
 }
 

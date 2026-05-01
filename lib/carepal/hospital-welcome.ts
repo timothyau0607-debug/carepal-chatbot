@@ -64,7 +64,7 @@ export function initialAssistantWelcome(
     if (remembered) {
       return `嗨，我是小晴～又見面了～${tipBlock}今天狀況怎麼樣？失智症或照顧想聊的都可以丟給我，我陪你釐清。`;
     }
-    return `嗨，我是小晴～醫院裡陪你聊照顧的小助手，你好呀～有失智症或照顧上的困擾、疑問問我都行，我們慢慢一句一句來。${tipBlock}先問一下：方便怎麼稱呼你？`;
+    return `嗨，我是小晴～醫院裡陪你聊照顧的小助手，你好呀～有失智症或照顧上的困擾、疑問，也都可以隨時問我哦~! ${tipBlock}先問一下：方便怎麼稱呼你？`;
   }
 
   if (role === "patient") {

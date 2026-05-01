@@ -30,6 +30,12 @@ import {
   STAFF_CARE_LEAD,
   STAFF_PRAISE_NUDGE_MIN_USER_MESSAGES,
 } from "@/lib/carepal/visit-staff-nudge";
+import {
+  buildMidConversationTipSystemBlock,
+  shouldOfferMidConversationTip,
+} from "@/lib/carepal/mid-conversation-tip";
+import { buildProactiveTipFromRag } from "@/lib/carepal/proactive-rag-tip";
+import { pickProactiveCareTipForVariety } from "@/lib/carepal/proactive-care-tips";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
@@ -37,6 +43,8 @@ type Body = {
   messages?: Msg[];
   userKey?: string;
   userRole?: string;
+  /** 上一次「對話中段」注入小錦囊時的使用者訊息則數（不含本則）；用於節流 */
+  lastProactiveTipUserCount?: number;
   /** 本機畫像（未連雲端或作補充），與雲端長期記憶二選一併用 */
   clientProfile?: {
     display_name?: string;
@@ -97,6 +105,41 @@ export async function POST(request: Request) {
     isSubstantiveDementiaCareQuestion(lastUser.content);
   const wantsInfoDepth = wantsInformationalDepth(lastUser.content);
   const longFormCare = substantiveCareQuestion || wantsInfoDepth;
+
+  const offerMidTip = shouldOfferMidConversationTip({
+    userRole,
+    userMessageCount,
+    lastUserText: lastUser.content,
+    longFormCare,
+    lastProactiveTipUserCount: body.lastProactiveTipUserCount,
+  });
+
+  let midConversationTipBlock = "";
+  let midTipSource: { source: string; snippet: string } | null = null;
+  if (
+    offerMidTip &&
+    (userRole === "family" || userRole === "patient")
+  ) {
+    const varietyKey = `${userMessageCount}:${body.lastProactiveTipUserCount ?? 0}:${body.userKey ?? ""}`;
+    const ragTip = await buildProactiveTipFromRag(userRole, varietyKey);
+    let excerpt = ragTip?.excerpt?.trim() ?? "";
+    if (ragTip?.source && excerpt.length >= 15) {
+      midTipSource = {
+        source: ragTip.source,
+        snippet:
+          excerpt.length > 150 ? excerpt.slice(0, 150) + "…" : excerpt,
+      };
+    }
+    if (excerpt.length < 15) {
+      excerpt = pickProactiveCareTipForVariety(userRole, varietyKey).trim();
+    }
+    if (excerpt.length >= 15) {
+      midConversationTipBlock = buildMidConversationTipSystemBlock({
+        role: userRole,
+        excerpt,
+      });
+    }
+  }
 
   let longTermBlock = "";
   if (isValidUserKey(body.userKey)) {
@@ -198,6 +241,7 @@ export async function POST(request: Request) {
         ragGroundingRule,
         substantiveCareHint,
         ...(singleReplyCompletenessHint ? [singleReplyCompletenessHint] : []),
+        midConversationTipBlock,
         staffFeedBlock,
         staffPraiseTimingHint,
         memoryForPrompt,
@@ -228,6 +272,9 @@ export async function POST(request: Request) {
       } else if (ragBackedDepth) {
         const floorMid = userRole === "staff" ? 520 : 680;
         maxOutTokens = Math.max(maxOutTokens, floorMid);
+      }
+      if (midConversationTipBlock.trim() && (userRole === "family" || userRole === "patient")) {
+        maxOutTokens = Math.max(maxOutTokens, 380);
       }
       const completion = await llm.client.chat.completions.create({
         model: llm.model,
@@ -292,10 +339,17 @@ export async function POST(request: Request) {
           );
         }
       }
+      const responseSources =
+        midTipSource && midConversationTipBlock.trim()
+          ? [midTipSource, ...sources]
+          : sources;
       return NextResponse.json({
         reply: text,
-        sources,
+        sources: responseSources,
         mode: "llm" as const,
+        ...(midConversationTipBlock.trim()
+          ? { midTipOfferedAt: userMessageCount }
+          : {}),
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "LLM 呼叫失敗";

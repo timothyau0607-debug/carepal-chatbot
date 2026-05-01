@@ -1,3 +1,5 @@
+import { createChatLlm } from "@/lib/carepal/llm";
+import { rewriteProactiveCareTipWithLlm } from "@/lib/carepal/proactive-tip-llm";
 import { retrieveRag } from "@/lib/carepal/rag-retrieve";
 import { todayDateTaipei } from "@/lib/carepal/staff-feed";
 
@@ -331,7 +333,31 @@ export async function buildProactiveTipFromRag(
   const rot = hashDateString(`${varietySalt}:tiptry`) % top.length;
   const order = [...top.slice(rot), ...top.slice(0, rot)];
 
+  const llm = createChatLlm();
+
   for (const r of order) {
+    const body = extractAnswerBodyForTip(r.chunk.text);
+    if (body.replace(/…/g, "").trim().length < 25) continue;
+    if (stillLooksLikeSourceDump(body)) continue;
+
+    if (llm) {
+      const llmExcerpt = await rewriteProactiveCareTipWithLlm(
+        llm.client,
+        llm.model,
+        role,
+        body
+      );
+      if (
+        llmExcerpt &&
+        llmExcerpt.replace(/…/g, "").trim().length >= 20
+      ) {
+        const excerpt = fitCareTipToMaxLen(llmExcerpt, 420);
+        if (excerpt.replace(/…/g, "").trim().length >= 20) {
+          return { excerpt, source: r.chunk.source };
+        }
+      }
+    }
+
     const excerpt = shapeRagChunkAsCareTipNugget(r.chunk.text, 420, role);
     if (excerpt.replace(/…/g, "").trim().length >= 20) {
       return { excerpt, source: r.chunk.source };

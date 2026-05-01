@@ -3,7 +3,11 @@ import { xiaoqingSystemForRole } from "@/lib/carepal/persona";
 import { createChatLlm } from "@/lib/carepal/llm";
 import { formatRagForPrompt, isRagPromptProbablyEmpty } from "@/lib/carepal/rag-match";
 import { retrieveRag } from "@/lib/carepal/rag-retrieve";
-import { isSubstantiveDementiaCareQuestion } from "@/lib/carepal/substantive-care-question";
+import {
+  isSubstantiveDementiaCareQuestion,
+  wantsInformationalDepth,
+  isLikelyCareTeachingQuestion,
+} from "@/lib/carepal/substantive-care-question";
 import { isValidUserKey } from "@/lib/carepal/user-key";
 import { audiencePreambleForRole, parseUserRole } from "@/lib/carepal/user-role";
 import {
@@ -91,6 +95,8 @@ export async function POST(request: Request) {
   const userMessageCount = messages.filter((m) => m.role === "user").length;
   const substantiveCareQuestion =
     isSubstantiveDementiaCareQuestion(lastUser.content);
+  const wantsInfoDepth = wantsInformationalDepth(lastUser.content);
+  const longFormCare = substantiveCareQuestion || wantsInfoDepth;
 
   let longTermBlock = "";
   if (isValidUserKey(body.userKey)) {
@@ -165,16 +171,24 @@ export async function POST(request: Request) {
   const llm = createChatLlm();
   if (llm) {
     try {
+      const ragBackedDepth =
+        hasRagSnippets && isLikelyCareTeachingQuestion(lastUser.content);
+
       const ragReferenceBlock = `參考資料（可引用，勿捏造未列內容）：\n${ragText}`;
       const ragGroundingRule =
         "若參考資料與本輪使用者所問的主題相關，事實、步驟與用語仍須以參考資料為準；可維持溫短口吻，但不可略過關鍵要點。僅在參考資料明顯與本輪無關時，再依情緒陪伴為主。";
-      const ragGroundingStrong = substantiveCareQuestion
+      const ragGroundingStrong = longFormCare
         ? "【參考資料優先】以下片段若與本輪問題有關，回覆須**融入**其中要點並說清楚（可數句或數點，可不標出處）；切勿只用泛泛常識帶過。若明顯無關，不要硬套。"
         : "【參考資料優先】以下片段若與使用者本輪問題有關，回覆須至少反映其中一項具體要點（一句即可，可不標出處）；切勿只用模型自身的泛泛常識帶過。若明顯無關，不要硬套。";
 
-      const substantiveCareHint = substantiveCareQuestion
-        ? "【本輪判斷】使用者正在問失智／照護相關**實質問題**：請依人設【篇幅—失智／照護實質提問】給**較完整、讀得懂**的答案；**勿**只回一兩句敷衍。仍遵守安全邊界與參考資料。"
+      const substantiveCareHint = longFormCare
+        ? "【本輪判斷】使用者正在問失智／照護相關**實質問題**（或明顯希望一次說清楚）：請依人設【篇幅—失智／照護實質提問】給**較完整、讀得懂**的答案；**勿**只回一兩句敷衍。仍遵守安全邊界與參考資料。"
         : "";
+
+      const singleReplyCompletenessHint =
+        longFormCare || ragBackedDepth
+          ? "【單則答覆】本輪若在問作法、原因、要注意什麼、或希望說明／重點整理，請在**同一則回覆**內給齊核心步驟或判準，不要刻意留尾而逼對方多輪追問才講完；仍遵守參考資料與安全邊界。"
+          : "";
 
       const systemParts = [
         xiaoqingSystemForRole(userRole),
@@ -183,6 +197,7 @@ export async function POST(request: Request) {
         ...(hasRagSnippets ? [ragGroundingStrong] : []),
         ragGroundingRule,
         substantiveCareHint,
+        ...(singleReplyCompletenessHint ? [singleReplyCompletenessHint] : []),
         staffFeedBlock,
         staffPraiseTimingHint,
         memoryForPrompt,
@@ -204,12 +219,15 @@ export async function POST(request: Request) {
         : nudgeOn && (userRole === "family" || userRole === "patient")
           ? 320
           : staffPraiseTimingHint.trim().length > 0
-            ? 300
+            ? 380
             : 220;
 
-      if (substantiveCareQuestion) {
+      if (longFormCare) {
         const floor = userRole === "staff" ? 640 : 840;
         maxOutTokens = Math.max(maxOutTokens, floor);
+      } else if (ragBackedDepth) {
+        const floorMid = userRole === "staff" ? 520 : 680;
+        maxOutTokens = Math.max(maxOutTokens, floorMid);
       }
       const completion = await llm.client.chat.completions.create({
         model: llm.model,

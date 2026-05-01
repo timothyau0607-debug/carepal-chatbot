@@ -4,7 +4,6 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
-  useLayoutEffect,
   useRef,
   useState,
   forwardRef,
@@ -66,7 +65,8 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
   ref
 ) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
-  const didSeedWelcome = useRef(false);
+  const welcomeInitRef = useRef(false);
+  const [welcomeLoading, setWelcomeLoading] = useState(false);
   /** 第一輪逐字顯示為開場白，完成時不觸發 onReplyComplete */
   const skipNextReplyCompleteRef = useRef(true);
   const [text, setText] = useState("");
@@ -88,14 +88,70 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
     readAloudRef.current = readAloud;
   }, [readAloud]);
 
-  useLayoutEffect(() => {
-    if (didSeedWelcome.current) return;
+  useEffect(() => {
     if (clientProfile === null) return;
-    didSeedWelcome.current = true;
-    const welcome = initialAssistantWelcome(userRole, clientProfile);
+    if (welcomeInitRef.current) return;
+    welcomeInitRef.current = true;
+
+    if (userRole === "staff") {
+      const welcome = initialAssistantWelcome(userRole, clientProfile);
+      setMessages([{ role: "assistant", content: "" }]);
+      setTypewriterTarget(welcome);
+      return;
+    }
+
+    if (userRole !== "family" && userRole !== "patient") {
+      const welcome = initialAssistantWelcome(userRole, clientProfile);
+      setMessages([{ role: "assistant", content: "" }]);
+      setTypewriterTarget(welcome);
+      return;
+    }
+
+    let cancelled = false;
     setMessages([{ role: "assistant", content: "" }]);
-    setTypewriterTarget(welcome);
-  }, [userRole, clientProfile]);
+    setWelcomeLoading(true);
+
+    void (async () => {
+      let ragEx: string | undefined;
+      let ragSrc: string | undefined;
+      try {
+        const res = await fetch(
+          `/api/proactive-care-tip?role=${encodeURIComponent(userRole)}`
+        );
+        if (res.ok) {
+          const j = (await res.json()) as {
+            tip?: string | null;
+            source?: string | null;
+          };
+          if (j.tip?.trim()) {
+            ragEx = j.tip.trim();
+            ragSrc = j.source?.trim() ?? "";
+          }
+        }
+      } catch {
+        /* 退回靜態錦囊 */
+      }
+      if (cancelled) return;
+      setWelcomeLoading(false);
+      if (ragEx) {
+        onRagUpdate([
+          {
+            source: ragSrc || "衛教摘錄",
+            snippet:
+              ragEx.length > 150 ? ragEx.slice(0, 150) + "…" : ragEx,
+          },
+        ]);
+      }
+      const welcome = initialAssistantWelcome(userRole, clientProfile, {
+        ragTipExcerpt: ragEx,
+      });
+      setTypewriterTarget(welcome);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userRole, clientProfile, onRagUpdate]);
 
   const ttsVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
   const onReplyCompleteRef = useRef(onReplyComplete);
@@ -206,7 +262,7 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
   const submitUserText = useCallback(
     async (raw: string) => {
       const t = raw.trim();
-      if (!t || loading || assistantTyping) return;
+      if (!t || loading || assistantTyping || welcomeLoading) return;
       setError(null);
       setText("");
 
@@ -267,6 +323,7 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
     [
       loading,
       assistantTyping,
+      welcomeLoading,
       messages,
       onRagUpdate,
       onActivityLine,
@@ -296,14 +353,14 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
       ttsIndexRef.current = -1;
       return;
     }
-    if (loading || assistantTyping) return;
+    if (loading || assistantTyping || welcomeLoading) return;
     const last = messages.length - 1;
     if (last < 0) return;
     const m = messages[last];
     if (m?.role !== "assistant") return;
     if (ttsIndexRef.current === last) return;
     playReadAloudForFullReply(m.content, last);
-  }, [messages, readAloud, loading, assistantTyping, playReadAloudForFullReply]);
+  }, [messages, readAloud, loading, assistantTyping, welcomeLoading, playReadAloudForFullReply]);
 
   return (
     <div
@@ -368,6 +425,12 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
             </div>
           </div>
         ))}
+        {welcomeLoading && (
+          <p className="flex items-center gap-2 text-stone-500">
+            <Loader2 className="size-4 shrink-0 animate-spin" />
+            小晴正在從衛教資料挑一句小錦囊…
+          </p>
+        )}
         {loading && (
           <p className="flex items-center gap-2 text-stone-500">
             <Loader2 className="size-4 shrink-0 animate-spin" />
@@ -443,12 +506,12 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
           value={text}
           onChange={(e) => setText(e.target.value)}
           maxLength={800}
-          disabled={loading || assistantTyping}
+          disabled={loading || assistantTyping || welcomeLoading}
           aria-label="訊息輸入"
         />
         <button
           type="submit"
-          disabled={loading || assistantTyping || !text.trim()}
+          disabled={loading || assistantTyping || welcomeLoading || !text.trim()}
           className={`inline-flex shrink-0 items-center justify-center gap-1 rounded-xl bg-teal-600 font-medium text-white shadow-sm transition hover:bg-teal-500 disabled:cursor-not-allowed disabled:opacity-50 ${compact ? "min-h-[2.75rem] px-3 py-2 text-base" : "px-3 py-2 text-sm"}`}
         >
           <Send className="size-4 shrink-0" aria-hidden />

@@ -1,8 +1,17 @@
 import type { UserRole } from "@/lib/carepal/user-role";
 import type { LocalProfileSnapshot } from "@/lib/carepal/local-profile";
+import {
+  formatProactiveTipLead,
+  proactiveCareTipLeadForRole,
+} from "@/lib/carepal/proactive-care-tips";
 
 const GUEST = "訪客";
 const MAX_NAME = 20;
+
+export type WelcomeOptions = {
+  /** RAG 摘錄正文（不含前綴）；有值且有長度則優先於靜態題庫 */
+  ragTipExcerpt?: string | null;
+};
 
 function trimName(raw: string): string {
   const s = raw.trim();
@@ -25,34 +34,48 @@ function hasProfileContext(p: LocalProfileSnapshot): boolean {
   return parts.some((s) => s.trim().length > 0);
 }
 
+function visitorTipBlock(role: UserRole, opts?: WelcomeOptions): string {
+  if (role !== "family" && role !== "patient") return "";
+  const ex = opts?.ragTipExcerpt?.trim();
+  if (ex) {
+    const lead = formatProactiveTipLead(role, ex);
+    return lead ? `${lead} ` : "";
+  }
+  const tip = proactiveCareTipLeadForRole(role);
+  return tip ? `${tip} ` : "";
+}
+
 /**
  * 首次開啟對話的招呼。若畫像已有稱呼或長期內容，則不追問稱呼，改以稱呼問候今日狀況；否則保留首次引導與稱呼一句。
  */
 export function initialAssistantWelcome(
   role: UserRole,
-  profile: LocalProfileSnapshot
+  profile: LocalProfileSnapshot,
+  opts?: WelcomeOptions
 ): string {
   const name = trimName(profile.display_name);
   const remembered = name.length > 0 || hasProfileContext(profile);
 
   if (role === "family") {
+    const tipBlock = visitorTipBlock("family", opts);
     if (name) {
-      return `嗨，我是小晴～${name}，你好呀～又見面了。今天自己或家人還好嗎？照顧上想聊的儘管說，我們慢慢一句一句來。`;
+      return `嗨，我是小晴～${name}，你好呀～又見面了。${tipBlock}今天自己或家人還好嗎？照顧上想聊的儘管說，我們慢慢一句一句來。`;
     }
     if (remembered) {
-      return "嗨，我是小晴～又見面了～今天狀況怎麼樣？失智症或照顧想聊的都可以丟給我，我陪你釐清。";
+      return `嗨，我是小晴～又見面了～${tipBlock}今天狀況怎麼樣？失智症或照顧想聊的都可以丟給我，我陪你釐清。`;
     }
-    return "嗨，我是小晴～醫院裡陪你聊照顧的小助手，你好呀～有失智症或照顧上的困擾、疑問問我都行，我們慢慢一句一句來。先問一下：方便怎麼稱呼你？";
+    return `嗨，我是小晴～醫院裡陪你聊照顧的小助手，你好呀～有失智症或照顧上的困擾、疑問問我都行，我們慢慢一句一句來。${tipBlock}先問一下：方便怎麼稱呼你？`;
   }
 
   if (role === "patient") {
+    const tipBlock = visitorTipBlock("patient", opts);
     if (name) {
-      return `嗨，我是小晴～${name}，你好～又見面了。今天身體或心情還好嗎？想問的儘管說。`;
+      return `嗨，我是小晴～${name}，你好～又見面了。${tipBlock}今天身體或心情還好嗎？想問的儘管說。`;
     }
     if (remembered) {
-      return "嗨，我是小晴～又見面了～今天想從哪方面聊？失智症、照顧或身體有疑問，我盡力用短話幫你整理。";
+      return `嗨，我是小晴～又見面了～${tipBlock}今天想從哪方面聊？記憶、行動或身體有疑問，我盡力用短話幫你整理。`;
     }
-    return "嗨，我是小晴～在醫院裡陪你問問答答的小助手，很高興遇到你～失智症、照顧或身體上的疑問想聊都可以。請問怎麼稱呼你？";
+    return `嗨，我是小晴～在醫院裡陪你問問答答的小助手，很高興遇到你～記憶、行動或身體有疑問想聊都可以。${tipBlock}請問怎麼稱呼你？`;
   }
 
   if (name) {

@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { xiaoqingSystemForRole } from "@/lib/carepal/persona";
 import { createChatLlm } from "@/lib/carepal/llm";
@@ -120,7 +121,7 @@ export async function POST(request: Request) {
     offerMidTip &&
     (userRole === "family" || userRole === "patient")
   ) {
-    const varietyKey = `${userMessageCount}:${body.lastProactiveTipUserCount ?? 0}:${body.userKey ?? ""}`;
+    const varietyKey = `${userMessageCount}:${body.lastProactiveTipUserCount ?? 0}:${body.userKey ?? ""}:${randomUUID()}`;
     const ragTip = await buildProactiveTipFromRag(userRole, varietyKey);
     let excerpt = ragTip?.excerpt?.trim() ?? "";
     if (ragTip?.source && excerpt.length >= 15) {

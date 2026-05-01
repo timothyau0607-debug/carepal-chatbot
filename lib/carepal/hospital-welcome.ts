@@ -2,6 +2,7 @@ import type { UserRole } from "@/lib/carepal/user-role";
 import type { LocalProfileSnapshot } from "@/lib/carepal/local-profile";
 import {
   formatProactiveTipLead,
+  pickProactiveCareTipForVariety,
   proactiveCareTipLeadForRole,
 } from "@/lib/carepal/proactive-care-tips";
 
@@ -11,6 +12,8 @@ const MAX_NAME = 20;
 export type WelcomeOptions = {
   /** RAG 摘錄正文（不含前綴）；有值且有長度則優先於靜態題庫 */
   ragTipExcerpt?: string | null;
+  /** 每次開啟對話傳入不同字串，靜態小錦囊也會換題（與 RAG nonce 可同一值） */
+  tipVarietyKey?: string;
 };
 
 function trimName(raw: string): string {
@@ -39,6 +42,12 @@ function visitorTipBlock(role: UserRole, opts?: WelcomeOptions): string {
   const ex = opts?.ragTipExcerpt?.trim();
   if (ex) {
     const lead = formatProactiveTipLead(role, ex);
+    return lead ? `${lead} ` : "";
+  }
+  const key = opts?.tipVarietyKey?.trim();
+  if (key) {
+    const body = pickProactiveCareTipForVariety(role, key);
+    const lead = formatProactiveTipLead(role, body);
     return lead ? `${lead} ` : "";
   }
   const tip = proactiveCareTipLeadForRole(role);

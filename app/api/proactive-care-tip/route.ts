@@ -1,10 +1,11 @@
+import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { buildProactiveTipFromRag } from "@/lib/carepal/proactive-rag-tip";
 import { isUserRole, type UserRole } from "@/lib/carepal/user-role";
 
 /**
- * GET /api/proactive-care-tip?role=family|patient
- * 以 RAG 取一段衛教摘錄，供開場「小錦囊」；失敗時前端可退回靜態題庫。
+ * GET /api/proactive-care-tip?role=family|patient&nonce=optional
+ * 以 RAG 取一段衛教摘錄，供開場「小錦囊」。建議每次載入傳不同 nonce，避免同日所有人同一題。
  */
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -15,8 +16,10 @@ export async function GET(request: Request) {
       { status: 400 }
     );
   }
+  const nonce =
+    searchParams.get("nonce")?.trim().slice(0, 128) || randomUUID();
   try {
-    const built = await buildProactiveTipFromRag(r);
+    const built = await buildProactiveTipFromRag(r, nonce);
     if (!built) {
       return NextResponse.json({ tip: null as string | null, source: null });
     }

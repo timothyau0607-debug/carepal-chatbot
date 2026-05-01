@@ -115,12 +115,17 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
     setMessages([{ role: "assistant", content: "" }]);
     setWelcomeLoading(true);
 
+    const welcomeTipNonce =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+
     void (async () => {
       let ragEx: string | undefined;
       let ragSrc: string | undefined;
       try {
         const res = await fetch(
-          `/api/proactive-care-tip?role=${encodeURIComponent(userRole)}`
+          `/api/proactive-care-tip?role=${encodeURIComponent(userRole)}&nonce=${encodeURIComponent(welcomeTipNonce)}`
         );
         if (res.ok) {
           const j = (await res.json()) as {
@@ -148,6 +153,7 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
       }
       const welcome = initialAssistantWelcome(userRole, clientProfile, {
         ragTipExcerpt: ragEx,
+        tipVarietyKey: welcomeTipNonce,
       });
       setTypewriterTarget(welcome);
     })();

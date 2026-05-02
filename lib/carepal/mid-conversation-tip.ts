@@ -85,8 +85,7 @@ export function buildMidConversationTipSystemBlock(params: {
   role: "family" | "patient";
   excerpt: string;
 }): string {
-  const label =
-    params.role === "family" ? "照顧小錦囊" : "小錦囊";
+  const label = "照顧／失智小錦囊";
   const e = params.excerpt
     .replace(/\r\n/g, "\n")
     .split("\n")

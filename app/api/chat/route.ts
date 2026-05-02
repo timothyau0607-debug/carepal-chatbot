@@ -35,7 +35,6 @@ import {
   buildMidConversationTipSystemBlock,
   shouldOfferMidConversationTip,
 } from "@/lib/carepal/mid-conversation-tip";
-import { buildProactiveTipFromRag } from "@/lib/carepal/proactive-rag-tip";
 import { pickProactiveCareTipForVariety } from "@/lib/carepal/proactive-care-tips";
 
 type Msg = { role: "user" | "assistant"; content: string };
@@ -122,19 +121,13 @@ export async function POST(request: Request) {
     (userRole === "family" || userRole === "patient")
   ) {
     const varietyKey = `${userMessageCount}:${body.lastProactiveTipUserCount ?? 0}:${body.userKey ?? ""}:${randomUUID()}`;
-    const ragTip = await buildProactiveTipFromRag(userRole, varietyKey);
-    let excerpt = ragTip?.excerpt?.trim() ?? "";
-    if (ragTip?.source && excerpt.length >= 15) {
+    const excerpt = pickProactiveCareTipForVariety(userRole, varietyKey).trim();
+    if (excerpt.length >= 15) {
       midTipSource = {
-        source: ragTip.source,
+        source: "照顧／失智小錦囊",
         snippet:
           excerpt.length > 150 ? excerpt.slice(0, 150) + "…" : excerpt,
       };
-    }
-    if (excerpt.length < 15) {
-      excerpt = pickProactiveCareTipForVariety(userRole, varietyKey).trim();
-    }
-    if (excerpt.length >= 15) {
       midConversationTipBlock = buildMidConversationTipSystemBlock({
         role: userRole,
         excerpt,

@@ -17,6 +17,7 @@ import {
 import { initialAssistantWelcome } from "@/lib/carepal/hospital-welcome";
 import { pickProactiveCareTipForVariety } from "@/lib/carepal/proactive-care-tips";
 import { persistStaffCheerSnippet } from "@/lib/carepal/persist-staff-cheer-snippet";
+import { formatCarepalStaffSignalStamp } from "@/lib/carepal/staff-signal-stamp";
 import {
   looksLikeDirectedStaffLetter,
   STAFF_LETTER_RECALL_WINDOW_MS,
@@ -284,7 +285,7 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
   const persistStaffReaction = useCallback(
     async (kind: "cheer" | "like") => {
       if (!clientProfile || !userKey?.trim()) return;
-      const stamp = new Date().toLocaleString("zh-TW", { hour12: false });
+      const stamp = formatCarepalStaffSignalStamp();
       const line =
         kind === "cheer"
           ? `[介面紀錄｜${stamp}] 經對話區向醫護／團隊「打氣」。`
@@ -364,11 +365,8 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
         const key = userKey?.trim();
         let staffLetterMerged = false;
         if (key && clientProfile) {
-          const stampNow = () =>
-            new Date().toLocaleString("zh-TW", { hour12: false });
-
           if (captureNextLineForStaff) {
-            const line = `[對話區留言（已標記紀錄）｜${stampNow()}] ${t.slice(
+            const line = `[對話區留言（已標記紀錄）｜${formatCarepalStaffSignalStamp()}] ${t.slice(
               0,
               1500
             )}`;
@@ -388,7 +386,7 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
               STAFF_LETTER_RECALL_WINDOW_MS &&
             looksLikeDirectedStaffLetter(t)
           ) {
-            const line = `[對話區留言（自動辨識致醫護／團隊）｜${stampNow()}] ${t.slice(
+            const line = `[對話區留言（自動辨識致醫護／團隊）｜${formatCarepalStaffSignalStamp()}] ${t.slice(
               0,
               1500
             )}`;

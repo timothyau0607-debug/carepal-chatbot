@@ -1,9 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  todayDateTaipei,
+  yesterdayDateTaipei,
+} from "@/lib/carepal/taipei-calendar";
 
-/** 以台灣日曆日作為「今日」摘要邊界 */
-export function todayDateTaipei(): string {
-  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Taipei" });
-}
+export { todayDateTaipei } from "@/lib/carepal/taipei-calendar";
 
 export type StaffFeedRow = {
   one_line: string;
@@ -108,55 +109,100 @@ export async function upsertTodayStaffFeed(
   if (error) throw error;
 }
 
-/**
- * 供醫護 system prompt；若無表或尚無列則回空字串。
- */
-export async function formatTodayStaffFeedForSystemPrompt(
-  supabase: SupabaseClient
-): Promise<string> {
-  const d = todayDateTaipei();
+type StaffFeedQueryRow = {
+  contributor_role?: string;
+  contributor_key?: string;
+  contributor_display_name?: string;
+  one_line?: string;
+  questions_asked?: string;
+  praise_for_staff?: string;
+  updated_at?: string;
+};
+
+function staffFeedRowsWithContent(rows: StaffFeedQueryRow[]): StaffFeedQueryRow[] {
+  return rows.filter((r) => {
+    const ol = (r.one_line ?? "").trim();
+    const qq = (r.questions_asked ?? "").trim();
+    const pr = (r.praise_for_staff ?? "").trim();
+    return Boolean(ol || qq || pr);
+  });
+}
+
+async function fetchStaffFeedForDate(
+  supabase: SupabaseClient,
+  signalDate: string
+): Promise<StaffFeedQueryRow[]> {
   const { data, error } = await supabase
     .from("carepal_staff_feed")
     .select(
       "contributor_key, contributor_role, contributor_display_name, one_line, questions_asked, praise_for_staff, updated_at"
     )
-    .eq("signal_date", d)
+    .eq("signal_date", signalDate)
     .order("updated_at", { ascending: false });
   if (error) {
     console.error("[carepal] formatTodayStaffFeed", error);
-    return "";
+    return [];
   }
-  const rows = data ?? [];
-  if (rows.length === 0) return "";
+  return (data ?? []) as StaffFeedQueryRow[];
+}
+
+/**
+ * 供醫護 system prompt；優先今日彙總；若今日尚無資料則代入昨日並註明。
+ */
+export async function formatTodayStaffFeedForSystemPrompt(
+  supabase: SupabaseClient
+): Promise<string> {
+  const todayD = todayDateTaipei();
+  const yesterdayD = yesterdayDateTaipei();
+
+  let rows = staffFeedRowsWithContent(await fetchStaffFeedForDate(supabase, todayD));
+  let isYesterdayFallback = false;
+  if (rows.length === 0) {
+    rows = staffFeedRowsWithContent(
+      await fetchStaffFeedForDate(supabase, yesterdayD)
+    );
+    if (rows.length === 0) return "";
+    isYesterdayFallback = true;
+  }
+
+  const title = isYesterdayFallback
+    ? `【昨日家屬／病友回饋（院內彙整、去識別；摘錄日期為 ${yesterdayD}）】`
+    : "【今日家屬／病友回饋（院內彙整、去識別；含對醫護的讚美與感謝、對院方／就醫體驗的正面評價；可短述給醫護團隊情緒支持）】";
+
+  const dateNote = isYesterdayFallback
+    ? `【彙整日期說明】今日（${todayD}）尚無病友／家屬的線上暖心彙整；下列內容皆為昨日（${yesterdayD}）資料。對話請用「昨天線上⋯」口語轉述，切勿說成今天剛留的紀錄。`
+    : null;
+
+  const howToEcho = isYesterdayFallback
+    ? `【轉述方式】以下摘錄之「今日／本日」在語意上等同「昨天」（因資料日期為昨日）；若摘錄有「讚美、感謝」內容：可用一句帶到——昨天有病友／家屬想透過你向團隊或某位同仁道謝（勿等對方先問）。**在約第 1～4 則醫護發言時**（對方**沒有**要你先回覆具體提問或偏閒聊時），**優先**主動一句帶正向回饋；若對方**有明確提問**，請先簡答，再於前後擇一自然帶一句，**不要**略過摘錄中有依據的好評。若某一則摘錄有「回饋者稱呼」，轉述給**被指名的醫護**時可用口語媒介句，例如：「〇〇有想請我跟你說一聲，謝謝你的照顧」——**〇〇僅能**用摘錄中標示的**回饋者稱呼**，且「被指名」須與「讚美、感謝」原文能合理對上「已記得資訊」裡**當前醫護**的稱呼／職稱（同一人）；對不上則只做**團隊／一般**讚美轉述，**不**硬套名字。**嚴禁**杜撰稱呼或感謝。若僅有其它欄而無讚美，仍可一句帶到「昨天有人想謝謝大家照顧」類訊息，維持簡短。`
+    : "【轉述方式】若本日有「讚美、感謝」內容：對話**開場可主動**一句帶到——今天有病友／家屬想透過你向團隊或某位同仁道謝（勿等對方先問）。**在約第 1～4 則醫護發言時**（對方**沒有**要你先回覆具體提問或偏閒聊時），**優先**主動一句帶正向回饋；若對方**有明確提問**，請先簡答，再於前後擇一自然帶一句，**不要**略過摘錄中有依據的好評。若某一則摘錄有「回饋者稱呼」，轉述給**被指名的醫護**時可用口語媒介句，例如：「〇〇有想請我跟你說一聲，謝謝你的照顧」——**〇〇僅能**用摘錄中標示的**回饋者稱呼**，且「被指名」須與「讚美、感謝」原文能合理對上「已記得資訊」裡**當前醫護**的稱呼／職稱（同一人）；對不上則只做**團隊／一般**讚美轉述，**不**硬套名字。**嚴禁**杜撰稱呼或感謝。若僅有其它欄而無讚美，仍可一句帶到「今天有人想謝謝大家照顧」類訊息，維持簡短。";
 
   const lines: string[] = [
-    "【今日家屬／病友回饋（院內彙整、去識別；含對醫護的讚美與感謝、對院方／就醫體驗的正面評價；可短述給醫護團隊情緒支持）】",
-    "【轉述方式】若本日有「讚美、感謝」內容：對話**開場可主動**一句帶到——今天有病友／家屬想透過你向團隊或某位同仁道謝（勿等對方先問）。**在約第 1～4 則醫護發言時**（對方**沒有**要你先回覆具體提問或偏閒聊時），**優先**主動一句帶正向回饋；若對方**有明確提問**，請先簡答，再於前後擇一自然帶一句，**不要**略過摘錄中有依據的好評。若某一則摘錄有「回饋者稱呼」，轉述給**被指名的醫護**時可用口語媒介句，例如：「〇〇有想請我跟你說一聲，謝謝你的照顧」——**〇〇僅能**用摘錄中標示的**回饋者稱呼**，且「被指名」須與「讚美、感謝」原文能合理對上「已記得資訊」裡**當前醫護**的稱呼／職稱（同一人）；對不上則只做**團隊／一般**讚美轉述，**不**硬套名字。**嚴禁**杜撰稱呼或感謝。若僅有其它欄而無讚美，仍可一句帶到「今天有人想謝謝大家照顧」類訊息，維持簡短。",
+    ...(dateNote ? [dateNote] : []),
+    title,
+    howToEcho,
     "【具名感謝對照】摘錄「讚美、感謝」欄若含**特定同仁姓名／職稱**（例如「林小陽護士」「謝醫師」），請對照「已記得資訊」第一行「稱呼或識別」是否為當前對談醫護之本名或簡稱（姓氏一致且簡稱可對上、或全名相符）：**對得上**時，可用第二人稱親切轉述，例如「家屬陳大文提到很感謝小陽你的幫忙，覺得你很細心」——「家屬／病友某某」須來自上列「回饋者稱呼」或摘錄明文；「小陽」僅在摘錄已出現或可與對談醫護姓名合理對照時使用。**對不上**時改為泛述「有病友／家屬提到某位護理師很受肯定」，勿臆測全院同仁姓名。**嚴禁**杜撰摘錄未出現的人名與細節。",
   ];
   for (const r of rows) {
     const role =
-      (r as { contributor_role?: string }).contributor_role === "patient"
+      r.contributor_role === "patient"
         ? "病友"
         : "家屬";
-    const k = (r as { contributor_key?: string }).contributor_key ?? "";
+    const k = r.contributor_key ?? "";
     const shortK = k.length > 8 ? k.slice(0, 4) + "…" : k;
-    const displayName = (
-      (r as { contributor_display_name?: string }).contributor_display_name ?? ""
-    ).trim();
+    const displayName = (r.contributor_display_name ?? "").trim();
     const who = displayName || shortK;
-    const ol = ((r as { one_line?: string }).one_line ?? "").trim();
-    const qq = ((r as { questions_asked?: string }).questions_asked ?? "").trim();
-    const pr = ((r as { praise_for_staff?: string }).praise_for_staff ?? "").trim();
+    const ol = (r.one_line ?? "").trim();
+    const qq = (r.questions_asked ?? "").trim();
+    const pr = (r.praise_for_staff ?? "").trim();
     if (!ol && !qq && !pr) continue;
     const bits: string[] = [];
     if (ol) bits.push(`情境：${ol}`);
     if (qq) bits.push(`常問/關心：${qq}`);
     if (pr) bits.push(`讚美、感謝或院方好評：${pr}`);
-    lines.push(
-      `— ${role}（回饋者稱呼：${who}）${bits.join("；")}`
-    );
+    lines.push(`— ${role}（回饋者稱呼：${who}）${bits.join("；")}`);
   }
-  if (lines.length <= 3) return "";
+  const headerCount = dateNote ? 4 : 3;
+  if (lines.length <= headerCount) return "";
   return lines.join("\n");
 }

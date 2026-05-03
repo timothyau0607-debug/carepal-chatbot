@@ -1,24 +1,32 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { todayDateTaipei } from "@/lib/carepal/staff-feed";
+import {
+  dayStartTaipeiIso,
+  extractSignalEnCaDateFromLine,
+  isoToEnCaTaipei,
+  todayDateTaipei,
+  yesterdayDateTaipei,
+} from "@/lib/carepal/taipei-calendar";
 
 const MAX_BRIEFING = 1100;
-const PROFILE_SCAN_LIMIT = 100;
+const PROFILE_SCAN_LIMIT = 200;
 
-function dayStartTaipeiIso(): string {
-  return `${todayDateTaipei()}T00:00:00+08:00`;
+type UiAgg = { cheer: number; like: number; letters: number; letterSnips: string[] };
+
+function emptyAgg(): UiAgg {
+  return { cheer: 0, like: 0, letters: 0, letterSnips: [] };
 }
 
-/** 今日 carepal_staff_feed → 一口氣講完的聊天句（無報表標題） */
-async function conversationalFromStaffFeed(
-  supabase: SupabaseClient
+async function conversationalFromStaffFeedForDate(
+  supabase: SupabaseClient,
+  signalDate: string,
+  tense: "today" | "yesterday"
 ): Promise<string> {
-  const d = todayDateTaipei();
   const { data, error } = await supabase
     .from("carepal_staff_feed")
     .select(
       "contributor_role, contributor_display_name, one_line, questions_asked, praise_for_staff, updated_at"
     )
-    .eq("signal_date", d)
+    .eq("signal_date", signalDate)
     .order("updated_at", { ascending: false });
   if (error || !data?.length) return "";
 
@@ -49,13 +57,18 @@ async function conversationalFromStaffFeed(
     }
   }
 
+  const dayWord = tense === "today" ? "今天" : "昨天";
+
   let s = "";
-  s += `對了～今天（${d}）線上有 ${active.length} 位病友或家屬，順手留了「今日摘要」裡的情境或關心，我幫你們喵了一眼。`;
+  s += `對了～${dayWord}（${signalDate}）線上有 ${active.length} 位病友或家屬，順手留了「${dayWord}摘要」裡的情境或關心，我幫你們喵了一眼。`;
 
   if (praiseLines > 0) {
     s += ` 裡頭大概有 ${praiseLines} 段，是真心在謝謝大家、或在誇團隊跟院這邊的照顧，聽了就覺得很值得跟大家分享。`;
   } else if (samples.length === 0) {
-    s += ` 多半是陪診、照顧脈絡，讚美的字還不算多，但今天至少有人記得來說一句，也很珍貴。`;
+    s +=
+      tense === "today"
+        ? ` 多半是陪診、照顧脈絡，讚美的字還不算多，但今天至少有人記得來說一句，也很珍貴。`
+        : ` 多半是陪診、照顧脈絡，讚美的字還不算多，不過昨天也有人記得來說一句，也很珍貴。`;
   }
 
   if (samples.length > 0) {
@@ -66,43 +79,56 @@ async function conversationalFromStaffFeed(
   return s.trim();
 }
 
-/** 線上按鈕／互動欄 → 一口氣聊天句 */
-async function conversationalFromProfileUiSignals(
+async function aggregateProfileUiByTaipeiDay(
   supabase: SupabaseClient
-): Promise<string> {
+): Promise<{ todayAgg: UiAgg; yesterdayAgg: UiAgg }> {
+  const yStart = dayStartTaipeiIso(yesterdayDateTaipei());
   const { data, error } = await supabase
     .from("carepal_profiles")
     .select(
-      "user_role, display_name, staff_interaction_satisfaction, updated_at"
+      "staff_interaction_satisfaction, updated_at"
     )
     .in("user_role", ["family", "patient"])
-    .gte("updated_at", dayStartTaipeiIso())
+    .gte("updated_at", yStart)
     .not("staff_interaction_satisfaction", "eq", "")
     .limit(PROFILE_SCAN_LIMIT);
-  if (error || !data?.length) return "";
+  if (error || !data?.length)
+    return { todayAgg: emptyAgg(), yesterdayAgg: emptyAgg() };
 
-  let cheer = 0;
-  let like = 0;
-  let letters = 0;
-  const letterSnips: string[] = [];
+  const todayD = todayDateTaipei();
+  const yestD = yesterdayDateTaipei();
+  const todayAgg = emptyAgg();
+  const yesterdayAgg = emptyAgg();
 
   for (const row of data) {
-    const s = (row as { staff_interaction_satisfaction?: string })
-      .staff_interaction_satisfaction ?? "";
-    if (!s.includes("[介面紀錄") && !s.includes("[對話區留言")) continue;
+    const satisfaction = (
+      row as { staff_interaction_satisfaction?: string }
+    ).staff_interaction_satisfaction ?? "";
+    const updatedAt =
+      typeof (row as { updated_at?: string }).updated_at === "string"
+        ? ((row as { updated_at: string }).updated_at)
+        : "";
+    const fallbackDay =
+      updatedAt.length > 0 ? isoToEnCaTaipei(updatedAt) : todayD;
 
-    for (const line of s.split("\n")) {
+    for (const line of satisfaction.split("\n")) {
       const t = line.trim();
       if (!t) continue;
+      if (!t.includes("[介面紀錄") && !t.includes("[對話區留言")) continue;
+      const day = extractSignalEnCaDateFromLine(t) ?? fallbackDay;
+      const bucket =
+        day === todayD ? todayAgg : day === yestD ? yesterdayAgg : null;
+      if (!bucket) continue;
+
       if (t.includes("[介面紀錄")) {
-        if (t.includes("「打氣」")) cheer++;
-        if (t.includes("「按讚」")) like++;
+        if (t.includes("「打氣」")) bucket.cheer++;
+        if (t.includes("「按讚」")) bucket.like++;
       }
       if (t.includes("[對話區留言")) {
-        letters++;
+        bucket.letters++;
         const body = t.replace(/^\[[^\]]+\]\s*/, "").trim();
-        if (body.length > 8 && letterSnips.length < 2) {
-          letterSnips.push(
+        if (body.length > 8 && bucket.letterSnips.length < 2) {
+          bucket.letterSnips.push(
             body.length > 95 ? body.slice(0, 95) + "…" : body
           );
         }
@@ -110,6 +136,11 @@ async function conversationalFromProfileUiSignals(
     }
   }
 
+  return { todayAgg, yesterdayAgg };
+}
+
+function conversationalFromUiAgg(agg: UiAgg, tense: "today" | "yesterday"): string {
+  const { cheer, like, letters, letterSnips } = agg;
   if (cheer + like + letters === 0) return "";
 
   const bits: string[] = [];
@@ -133,11 +164,17 @@ async function conversationalFromProfileUiSignals(
     );
   }
 
+  const tenseHint =
+    tense === "today"
+      ? "對話區塊這邊"
+      : "對話區塊這邊（發生在昨天的紀錄）";
+
   let s =
-    `還有小插曲：對話區塊這邊，${bits.join("，")}，像是在跟你們隔空比個愛心、說聲謝謝你們在。`;
+    `還有小插曲：${tenseHint}，${bits.join("，")}，像是在跟你們隔空比個愛心、說聲謝謝你們在。`;
 
   if (letterSnips.length > 0) {
-    s += ` 順手替你們捎一句：` +
+    s +=
+      ` 順手替你們捎一句：` +
       letterSnips.map((x) => `「${x}」`).join("、") +
       `——一樣是摘錄、別當逐字公文喔。`;
   }
@@ -147,20 +184,41 @@ async function conversationalFromProfileUiSignals(
 
 /**
  * 醫護開場「第二段」用：以小晴聊天的口吻講今日暖心事；無資料時回空字串。
- * 招呼語本身仍由 hospital-welcome 先講。
+ * 優先彙整「今天」的 staff_feed 與介面訊號；若今天兩邊都沒有，才用「昨天」並先交代一句。
  */
 export async function buildStaffOpeningBriefingForWelcome(
   supabase: SupabaseClient
 ): Promise<string> {
-  const [feedPara, uiPara] = await Promise.all([
-    conversationalFromStaffFeed(supabase),
-    conversationalFromProfileUiSignals(supabase),
-  ]);
+  const todayD = todayDateTaipei();
+  const yestD = yesterdayDateTaipei();
 
-  const blocks = [feedPara, uiPara].filter((x) => x.length > 0);
-  if (blocks.length === 0) return "";
+  const [{ todayAgg, yesterdayAgg }, feedToday, feedYesterday] =
+    await Promise.all([
+      aggregateProfileUiByTaipeiDay(supabase),
+      conversationalFromStaffFeedForDate(supabase, todayD, "today"),
+      conversationalFromStaffFeedForDate(supabase, yestD, "yesterday"),
+    ]);
 
-  let out = blocks.join("\n\n");
+  const uiToday = conversationalFromUiAgg(todayAgg, "today");
+  const uiYesterday = conversationalFromUiAgg(yesterdayAgg, "yesterday");
+
+  const todayHas = feedToday.length > 0 || uiToday.length > 0;
+  const yesterdayHas = feedYesterday.length > 0 || uiYesterday.length > 0;
+
+  let prefix = "";
+  let blocks: string[];
+
+  if (todayHas) {
+    blocks = [feedToday, uiToday].filter((x) => x.length > 0);
+  } else if (yesterdayHas) {
+    prefix =
+      `今天（${todayD}）線上還沒有新的暖心摘要或按讚／打氣／留言紀錄，先跟你們說昨天（${yestD}）大家留下的⋯`;
+    blocks = [feedYesterday, uiYesterday].filter((x) => x.length > 0);
+  } else {
+    return "";
+  }
+
+  let out = [prefix, ...blocks].filter((x) => x.length > 0).join("\n\n");
   out +=
     `\n\n（以上都是線上自動摘來的暖心片段～不保證逐字對得起原文，就只是先讓你們知道自己的付出有被看見啦。）`;
   return out.slice(0, MAX_BRIEFING);

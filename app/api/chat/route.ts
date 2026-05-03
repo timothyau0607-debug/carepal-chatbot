@@ -36,6 +36,10 @@ import {
   shouldOfferMidConversationTip,
 } from "@/lib/carepal/mid-conversation-tip";
 import { pickProactiveCareTipForVariety } from "@/lib/carepal/proactive-care-tips";
+import {
+  shouldOfferStaffCheerBanner,
+  STAFF_CHEER_UI_SYSTEM_HINT,
+} from "@/lib/carepal/staff-cheer-offer";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
@@ -45,6 +49,8 @@ type Body = {
   userRole?: string;
   /** 上一次「對話中段」注入小錦囊時的使用者訊息則數（不含本則）；用於節流 */
   lastProactiveTipUserCount?: number;
+  /** 上一次顯示「醫護打氣／按讚」區塊時的使用者訊息則數（節流） */
+  lastStaffCheerOfferUserCount?: number;
   /** 本機畫像（未連雲端或作補充），與雲端長期記憶二選一併用 */
   clientProfile?: {
     display_name?: string;
@@ -227,6 +233,31 @@ export async function POST(request: Request) {
           ? "【單則答覆】本輪若在問作法、原因、要注意什麼、或希望說明／重點整理，請在**同一則回覆**內給齊核心步驟或判準，不要刻意留尾而逼對方多輪追問才講完；仍遵守參考資料與安全邊界。"
           : "";
 
+      let prevAssistantText: string | undefined;
+      for (let i = messages.length - 2; i >= 0; i--) {
+        const m = messages[i];
+        if (m?.role === "assistant") {
+          prevAssistantText = m.content;
+          break;
+        }
+      }
+
+      const nudgeOn = staffSatisfactionNudge.trim().length > 0;
+      const needRoomForStaffNudge =
+        nudgeOn &&
+        !suppressRepeatedVisitStaffAsk &&
+        (userRole === "family" || userRole === "patient") &&
+        userMessageCount >= STAFF_PRAISE_NUDGE_MIN_USER_MESSAGES;
+      const offerStaffCheerUi = shouldOfferStaffCheerBanner({
+        userRole,
+        userMessageCount,
+        messages,
+        useCloudMemory,
+        memoryForPrompt,
+        clientProfile: body.clientProfile,
+        lastStaffCheerOfferUserCount: body.lastStaffCheerOfferUserCount,
+      });
+      const injectStaffCheerHint = offerStaffCheerUi;
       const systemParts = [
         xiaoqingSystemForRole(userRole),
         audiencePreamble,
@@ -245,13 +276,10 @@ export async function POST(request: Request) {
           "【下筆前最末提醒—須併入本則，勿整段略過】\n" + staffSatisfactionNudge
         );
       }
+      if (injectStaffCheerHint) {
+        systemParts.push(STAFF_CHEER_UI_SYSTEM_HINT);
+      }
       const systemWithRag = systemParts.join("\n\n");
-      const nudgeOn = staffSatisfactionNudge.trim().length > 0;
-      const needRoomForStaffNudge =
-        nudgeOn &&
-        !suppressRepeatedVisitStaffAsk &&
-        (userRole === "family" || userRole === "patient") &&
-        userMessageCount >= STAFF_PRAISE_NUDGE_MIN_USER_MESSAGES;
       let maxOutTokens = needRoomForStaffNudge
         ? 520
         : nudgeOn && (userRole === "family" || userRole === "patient")
@@ -270,6 +298,9 @@ export async function POST(request: Request) {
       if (midConversationTipBlock.trim() && (userRole === "family" || userRole === "patient")) {
         maxOutTokens = Math.max(maxOutTokens, 380);
       }
+      if (injectStaffCheerHint) {
+        maxOutTokens = Math.max(maxOutTokens, 480);
+      }
       const completion = await llm.client.chat.completions.create({
         model: llm.model,
         messages: [
@@ -284,6 +315,7 @@ export async function POST(request: Request) {
       });
       let out = completion.choices[0]?.message?.content?.trim() ?? "";
       if (
+        !offerStaffCheerUi &&
         needRoomForStaffNudge &&
         !suppressRepeatedVisitStaffAsk &&
         !hasRecordedStaffSatisfactionInPrompt(
@@ -292,16 +324,7 @@ export async function POST(request: Request) {
           body.clientProfile
         ) &&
         !replyMentionsVisitOrStaffCare(out) &&
-        !shouldSkipHardStaffCareLead(
-          lastUser.content,
-          (() => {
-            for (let i = messages.length - 2; i >= 0; i--) {
-              const m = messages[i];
-              if (m?.role === "assistant") return m.content;
-            }
-            return undefined;
-          })()
-        )
+        !shouldSkipHardStaffCareLead(lastUser.content, prevAssistantText)
       ) {
         out = out + "\n\n" + STAFF_CARE_LEAD;
       }
@@ -343,6 +366,9 @@ export async function POST(request: Request) {
         mode: "llm" as const,
         ...(midConversationTipBlock.trim()
           ? { midTipOfferedAt: userMessageCount }
+          : {}),
+        ...(injectStaffCheerHint
+          ? { staffCheerOffer: true, staffCheerOfferAt: userMessageCount }
           : {}),
       });
     } catch (e) {

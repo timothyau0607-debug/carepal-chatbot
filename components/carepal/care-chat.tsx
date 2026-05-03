@@ -8,7 +8,7 @@ import {
   useState,
   forwardRef,
 } from "react";
-import { Loader2, Send, Volume2, VolumeX } from "lucide-react";
+import { Loader2, Send, Sparkles, ThumbsUp, Volume2, VolumeX } from "lucide-react";
 import { pickXiaoqingVoice, XIAOQING_TTS } from "@/lib/carepal/tts-voice-pick";
 import {
   FormattedMessageBody,
@@ -16,6 +16,7 @@ import {
 } from "@/lib/carepal/chat-message-display";
 import { initialAssistantWelcome } from "@/lib/carepal/hospital-welcome";
 import { pickProactiveCareTipForVariety } from "@/lib/carepal/proactive-care-tips";
+import { persistStaffCheerSnippet } from "@/lib/carepal/persist-staff-cheer-snippet";
 import type { UserRole } from "@/lib/carepal/user-role";
 import type { LocalProfileSnapshot } from "@/lib/carepal/local-profile";
 
@@ -29,6 +30,10 @@ type ChatResponse = {
   mode: "llm" | "demo";
   /** 本輪有注入「對話中段小錦囊」時，為當時的使用者訊息則數 */
   midTipOfferedAt?: number;
+  /** 本輪在主答後顯示「醫護打氣／按讚」互動區 */
+  staffCheerOffer?: boolean;
+  /** 對應顯示區塊節流用的使用者訊息則數 */
+  staffCheerOfferAt?: number;
 };
 
 export type CareChatHandle = {
@@ -82,6 +87,11 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
   const readAloudRef = useRef(readAloud);
   /** 上一次伺服器在對話中段注入小錦囊時的 user 訊息則數；0 表示尚無 */
   const lastProactiveTipUserCountRef = useRef(0);
+  /** 上一次顯示醫護打氣／按讚區時的 user 訊息則數；0 表示尚無 */
+  const lastStaffCheerOfferUserCountRef = useRef(0);
+  /** 哪些 assistant 氣泡底下要顯示打氣／按讚區（key = messages 索引） */
+  const [staffCheerOfferByAssistantIdx, setStaffCheerOfferByAssistantIdx] =
+    useState<Record<number, true>>({});
   useEffect(() => {
     onBeforeTtsRef.current = onBeforeTtsPlay;
   }, [onBeforeTtsPlay]);
@@ -251,6 +261,25 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
     []
   );
 
+  const persistStaffReaction = useCallback(
+    async (kind: "cheer" | "like") => {
+      if (!clientProfile || !userKey?.trim()) return;
+      const stamp = new Date().toLocaleString("zh-TW", { hour12: false });
+      const line =
+        kind === "cheer"
+          ? `[介面紀錄｜${stamp}] 經對話區向醫護／團隊「打氣」。`
+          : `[介面紀錄｜${stamp}] 經對話區對醫護／團隊「按讚」肯定。`;
+      await persistStaffCheerSnippet({
+        userKey,
+        userRole,
+        clientProfile,
+        line,
+      });
+      onReplyComplete?.();
+    },
+    [clientProfile, onReplyComplete, userKey, userRole]
+  );
+
   const submitUserText = useCallback(
     async (raw: string) => {
       const t = raw.trim();
@@ -263,6 +292,7 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
       );
 
       const next: ChatMsg[] = [...messages, { role: "user", content: t }];
+      const assistantBubbleIndex = next.length;
       setMessages(next);
       setLoading(true);
 
@@ -274,6 +304,7 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
             messages: next,
             userRole,
             lastProactiveTipUserCount: lastProactiveTipUserCountRef.current,
+            lastStaffCheerOfferUserCount: lastStaffCheerOfferUserCountRef.current,
             ...(userKey ? { userKey } : {}),
             ...(clientProfile
               ? {
@@ -303,6 +334,18 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
         if (typeof data.midTipOfferedAt === "number") {
           lastProactiveTipUserCountRef.current = data.midTipOfferedAt;
         }
+        if (
+          typeof data.staffCheerOfferAt === "number" &&
+          data.staffCheerOffer === true
+        ) {
+          lastStaffCheerOfferUserCountRef.current = data.staffCheerOfferAt;
+        }
+        if (data.staffCheerOffer === true) {
+          setStaffCheerOfferByAssistantIdx((prev) => ({
+            ...prev,
+            [assistantBubbleIndex]: true,
+          }));
+        }
         setLoading(false);
         setMessages((prev) => [
           ...prev,
@@ -326,6 +369,7 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
       userRole,
       clientProfile,
       playReadAloudForFullReply,
+      onReplyComplete,
     ]
   );
 
@@ -417,6 +461,16 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
               <div className="mt-1 min-w-0">
                 <FormattedMessageBody role={m.role} content={m.content} />
               </div>
+              {m.role === "assistant" &&
+                m.content.trim().length > 0 &&
+                (userRole === "family" || userRole === "patient") &&
+                staffCheerOfferByAssistantIdx[i] ? (
+                <StaffCheerBar
+                  compact={compact}
+                  canPersist={Boolean(userKey?.trim() && clientProfile)}
+                  onPick={(kind) => persistStaffReaction(kind)}
+                />
+              ) : null}
             </div>
           </div>
         ))}
@@ -510,6 +564,83 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
     </div>
   );
 });
+
+type StaffCheerBarProps = {
+  compact: boolean;
+  /** 有可寫入的 userKey／畫像時為 true（否則僅示意） */
+  canPersist: boolean;
+  onPick: (kind: "cheer" | "like") => Promise<void>;
+};
+
+function StaffCheerBar({
+  compact,
+  canPersist,
+  onPick,
+}: StaffCheerBarProps) {
+  const [cheerDone, setCheerDone] = useState(false);
+  const [likeDone, setLikeDone] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const run = async (kind: "cheer" | "like") => {
+    if (busy) return;
+    if (!canPersist) return;
+    setBusy(true);
+    try {
+      await onPick(kind);
+      if (kind === "cheer") setCheerDone(true);
+      else setLikeDone(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      className="mt-3 border-t border-dashed border-stone-200/90 pt-2.5"
+      role="group"
+      aria-label="醫護打氣與按讚"
+    >
+      <p
+        className={
+          compact
+            ? "text-[0.7rem] leading-snug text-stone-600"
+            : "text-xs leading-relaxed text-stone-600"
+        }
+      >
+        若你也想替院內醫護／團隊打氣或默默按讚，可以點下面圖示；想多謝幾句，也歡迎用
+        <strong className="font-medium text-stone-800">下面的輸入框</strong>
+        留言給小晴帶著走～都量力就好，沒有任何壓力。
+      </p>
+      {!canPersist ? (
+        <p className="mt-1.5 text-[0.65rem] text-amber-700/90">
+          取得訪客識別並載入畫像後，再點選即可一併寫進「與醫護互動」紀錄。
+        </p>
+      ) : null}
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          disabled={!canPersist || busy || cheerDone}
+          onClick={() => void run("cheer")}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-amber-200/90 bg-amber-50/80 px-3 py-2 text-xs font-medium text-amber-900 shadow-sm transition hover:bg-amber-100/90 disabled:pointer-events-none disabled:opacity-45"
+          aria-label="向醫護打氣"
+        >
+          <Sparkles className="size-4 shrink-0 text-amber-600" aria-hidden />
+          {cheerDone ? "已傳達打氣" : "打氣"}
+        </button>
+        <button
+          type="button"
+          disabled={!canPersist || busy || likeDone}
+          onClick={() => void run("like")}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-teal-200/90 bg-teal-50/80 px-3 py-2 text-xs font-medium text-teal-900 shadow-sm transition hover:bg-teal-100/90 disabled:pointer-events-none disabled:opacity-45"
+          aria-label="按讚肯定醫護"
+        >
+          <ThumbsUp className="size-4 shrink-0 text-teal-600" aria-hidden />
+          {likeDone ? "已按讚紀錄" : "按讚"}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export const CareChat = CareChatInner;
 CareChat.displayName = "CareChat";

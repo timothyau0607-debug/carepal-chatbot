@@ -1,15 +1,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { todayDateTaipei } from "@/lib/carepal/staff-feed";
 
-const MAX_BRIEFING = 1200;
+const MAX_BRIEFING = 1100;
 const PROFILE_SCAN_LIMIT = 100;
 
 function dayStartTaipeiIso(): string {
   return `${todayDateTaipei()}T00:00:00+08:00`;
 }
 
-/** 今日 carepal_staff_feed 一則給醫護開場用的口語摘段 */
-async function snippetFromStaffFeed(
+/** 今日 carepal_staff_feed → 一口氣講完的聊天句（無報表標題） */
+async function conversationalFromStaffFeed(
   supabase: SupabaseClient
 ): Promise<string> {
   const d = todayDateTaipei();
@@ -44,23 +44,30 @@ async function snippetFromStaffFeed(
     if (pr) {
       praiseLines++;
       if (samples.length < 2) {
-        samples.push(pr.length > 90 ? pr.slice(0, 90) + "…" : pr);
+        samples.push(pr.length > 100 ? pr.slice(0, 100) + "…" : pr);
       }
     }
   }
 
-  let s = `【今日回饋彙整表｜${d}】目前有 ${active.length} 位病友／家屬的今日摘要。`;
+  let s = "";
+  s += `對了～今天（${d}）線上有 ${active.length} 位病友或家屬，順手留了「今日摘要」裡的情境或關心，我幫你們喵了一眼。`;
+
   if (praiseLines > 0) {
-    s += `其中 ${praiseLines} 則有寫到對團隊的感謝或讚美。`;
+    s += ` 裡頭大概有 ${praiseLines} 段，是真心在謝謝大家、或在誇團隊跟院這邊的照顧，聽了就覺得很值得跟大家分享。`;
+  } else if (samples.length === 0) {
+    s += ` 多半是陪診、照顧脈絡，讚美的字還不算多，但今天至少有人記得來說一句，也很珍貴。`;
   }
+
   if (samples.length > 0) {
-    s += ` 摘意（去識別、勿當逐字證據）：${samples.map((x) => `「${x}」`).join("；")}`;
+    const q = samples.map((x) => `也有人用口語聊到：「${x}」`);
+    s += ` ${q.join("；")}——細節我都有做去辨識，你就當加餐廳小菜，收下心意就好哈。`;
   }
-  return s;
+
+  return s.trim();
 }
 
-/** 今日 carepal_profiles 內「介面打氣／按讚／對話留言」合併摘段 */
-async function snippetFromProfileUiSignals(
+/** 線上按鈕／互動欄 → 一口氣聊天句 */
+async function conversationalFromProfileUiSignals(
   supabase: SupabaseClient
 ): Promise<string> {
   const { data, error } = await supabase
@@ -96,7 +103,7 @@ async function snippetFromProfileUiSignals(
         const body = t.replace(/^\[[^\]]+\]\s*/, "").trim();
         if (body.length > 8 && letterSnips.length < 2) {
           letterSnips.push(
-            body.length > 88 ? body.slice(0, 88) + "…" : body
+            body.length > 95 ? body.slice(0, 95) + "…" : body
           );
         }
       }
@@ -105,28 +112,56 @@ async function snippetFromProfileUiSignals(
 
   if (cheer + like + letters === 0) return "";
 
-  let out = `【線上按鈕與對話留言】今天有病友／家屬在「與醫護互動」欄留下紀錄：打氣 ${cheer} 次、按讚 ${like} 次、文字留言 ${letters} 則。`;
-  if (letterSnips.length > 0) {
-    out += ` 留言摘錄（去識別）：${letterSnips.map((x) => `「${x}」`).join("；")}`;
+  const bits: string[] = [];
+  if (cheer > 0) {
+    bits.push(
+      cheer === 1
+        ? "有人默默按了一次「打氣」鍵"
+        : `有人按「打氣」大概 ${cheer} 次`
+    );
   }
-  return out;
+  if (like > 0) {
+    bits.push(
+      like === 1 ? "也有人按個讚示意" : `按「讚」的有 ${like} 次上下`
+    );
+  }
+  if (letters > 0) {
+    bits.push(
+      letters === 1
+        ? "還有一人打字留言想把話留給團隊"
+        : `另外有 ${letters} 則是打字留下來的祝福或感謝`
+    );
+  }
+
+  let s =
+    `還有小插曲：對話區塊這邊，${bits.join("，")}，像是在跟你們隔空比個愛心、說聲謝謝你們在。`;
+
+  if (letterSnips.length > 0) {
+    s += ` 順手替你們捎一句：` +
+      letterSnips.map((x) => `「${x}」`).join("、") +
+      `——一樣是摘錄、別當逐字公文喔。`;
+  }
+
+  return s.trim();
 }
 
 /**
- * 醫護端第一則開場前段：從 DB 彙整今日家屬／病友之打氣、按讚、留言與回饋表摘錄。
- * 無資料或查詢失敗時回空字串。
+ * 醫護開場「第二段」用：以小晴聊天的口吻講今日暖心事；無資料時回空字串。
+ * 招呼語本身仍由 hospital-welcome 先講。
  */
 export async function buildStaffOpeningBriefingForWelcome(
   supabase: SupabaseClient
 ): Promise<string> {
-  const [feed, ui] = await Promise.all([
-    snippetFromStaffFeed(supabase),
-    snippetFromProfileUiSignals(supabase),
+  const [feedPara, uiPara] = await Promise.all([
+    conversationalFromStaffFeed(supabase),
+    conversationalFromProfileUiSignals(supabase),
   ]);
-  if (!feed && !ui) return "";
 
-  const intro =
-    "小晴先跟你說一聲：我從資料庫裡讀到今天有病友／家屬透過線上對話傳來的**打氣、按讚或留言**，以及寫進「今日回饋彙整」的重點（都已去識別，先讓護理師／團隊心裡有個底，不是正式通報）：";
+  const blocks = [feedPara, uiPara].filter((x) => x.length > 0);
+  if (blocks.length === 0) return "";
 
-  return [intro, feed, ui].filter((x) => x.trim().length > 0).join("\n\n").slice(0, MAX_BRIEFING);
+  let out = blocks.join("\n\n");
+  out +=
+    `\n\n（以上都是線上自動摘來的暖心片段～不保證逐字對得起原文，就只是先讓你們知道自己的付出有被看見啦。）`;
+  return out.slice(0, MAX_BRIEFING);
 }

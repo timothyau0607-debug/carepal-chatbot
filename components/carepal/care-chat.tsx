@@ -125,7 +125,7 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
           const b =
             typeof j.briefing === "string" ? j.briefing.trim() : "";
           setTypewriterTarget(
-            b.length > 0 ? `${b}\n\n${baseWelcome}` : baseWelcome
+            b.length > 0 ? `${baseWelcome}\n\n${b}` : baseWelcome
           );
         } catch {
           setTypewriterTarget(baseWelcome);

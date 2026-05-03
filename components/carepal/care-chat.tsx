@@ -17,6 +17,10 @@ import {
 import { initialAssistantWelcome } from "@/lib/carepal/hospital-welcome";
 import { pickProactiveCareTipForVariety } from "@/lib/carepal/proactive-care-tips";
 import { persistStaffCheerSnippet } from "@/lib/carepal/persist-staff-cheer-snippet";
+import {
+  looksLikeDirectedStaffLetter,
+  STAFF_LETTER_RECALL_WINDOW_MS,
+} from "@/lib/carepal/staff-letter-from-chat";
 import type { UserRole } from "@/lib/carepal/user-role";
 import type { LocalProfileSnapshot } from "@/lib/carepal/local-profile";
 
@@ -92,6 +96,10 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
   /** 哪些 assistant 氣泡底下要顯示打氣／按讚區（key = messages 索引） */
   const [staffCheerOfferByAssistantIdx, setStaffCheerOfferByAssistantIdx] =
     useState<Record<number, true>>({});
+  /** 近端曾顯示打氣區：此時間後一段時間內，符合語意的輸入可自動寫入醫護互動 */
+  const staffLetterPromptOpenedAtMsRef = useRef(0);
+  /** 由上方面板開啟：下一則輸入一併寫入「與醫護互動」 */
+  const [captureNextLineForStaff, setCaptureNextLineForStaff] = useState(false);
   useEffect(() => {
     onBeforeTtsRef.current = onBeforeTtsPlay;
   }, [onBeforeTtsPlay]);
@@ -108,9 +116,21 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
     welcomeInitRef.current = true;
 
     if (userRole === "staff") {
-      const welcome = initialAssistantWelcome(userRole, clientProfile);
+      const baseWelcome = initialAssistantWelcome(userRole, clientProfile);
       setMessages([{ role: "assistant", content: "" }]);
-      setTypewriterTarget(welcome);
+      void (async () => {
+        try {
+          const res = await fetch("/api/carepal/staff-opening");
+          const j = (await res.json()) as { briefing?: string };
+          const b =
+            typeof j.briefing === "string" ? j.briefing.trim() : "";
+          setTypewriterTarget(
+            b.length > 0 ? `${b}\n\n${baseWelcome}` : baseWelcome
+          );
+        } catch {
+          setTypewriterTarget(baseWelcome);
+        }
+      })();
       return;
     }
 
@@ -340,12 +360,57 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
         ) {
           lastStaffCheerOfferUserCountRef.current = data.staffCheerOfferAt;
         }
+
+        const key = userKey?.trim();
+        let staffLetterMerged = false;
+        if (key && clientProfile) {
+          const stampNow = () =>
+            new Date().toLocaleString("zh-TW", { hour12: false });
+
+          if (captureNextLineForStaff) {
+            const line = `[對話區留言（已標記紀錄）｜${stampNow()}] ${t.slice(
+              0,
+              1500
+            )}`;
+            const r = await persistStaffCheerSnippet({
+              userKey: key,
+              userRole,
+              clientProfile,
+              line,
+            });
+            if (r.ok) {
+              setCaptureNextLineForStaff(false);
+              staffLetterMerged = true;
+            }
+          } else if (
+            staffLetterPromptOpenedAtMsRef.current > 0 &&
+            Date.now() - staffLetterPromptOpenedAtMsRef.current <=
+              STAFF_LETTER_RECALL_WINDOW_MS &&
+            looksLikeDirectedStaffLetter(t)
+          ) {
+            const line = `[對話區留言（自動辨識致醫護／團隊）｜${stampNow()}] ${t.slice(
+              0,
+              1500
+            )}`;
+            const r = await persistStaffCheerSnippet({
+              userKey: key,
+              userRole,
+              clientProfile,
+              line,
+            });
+            if (r.ok) staffLetterMerged = true;
+          }
+          if (staffLetterMerged) onReplyComplete?.();
+        }
+
         if (data.staffCheerOffer === true) {
+          staffLetterPromptOpenedAtMsRef.current = Date.now();
           setStaffCheerOfferByAssistantIdx((prev) => ({
             ...prev,
             [assistantBubbleIndex]: true,
           }));
         }
+
         setLoading(false);
         setMessages((prev) => [
           ...prev,
@@ -370,6 +435,7 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
       clientProfile,
       playReadAloudForFullReply,
       onReplyComplete,
+      captureNextLineForStaff,
     ]
   );
 
@@ -439,7 +505,14 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
               : "可打字或點麥克風說話。例如：「阿公傍晚一直想出門怎麼辦？」"}
           </p>
         )}
-        {messages.map((m, i) => (
+        {(() => {
+          const lastIdx = messages.length > 0 ? messages.length - 1 : -1;
+          /** 上一則小晴內容仍逐字顯示／排程中時，不在該格掛載打氣區 */
+          const hideCheerOnLastBubbleWhileTyping =
+            lastIdx >= 0 &&
+            messages[lastIdx]?.role === "assistant" &&
+            (assistantTyping || typewriterTarget != null);
+          return messages.map((m, i) => (
           <div
             key={i}
             className={
@@ -464,16 +537,20 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
               {m.role === "assistant" &&
                 m.content.trim().length > 0 &&
                 (userRole === "family" || userRole === "patient") &&
-                staffCheerOfferByAssistantIdx[i] ? (
+                staffCheerOfferByAssistantIdx[i] &&
+                !(hideCheerOnLastBubbleWhileTyping && i === lastIdx) ? (
                 <StaffCheerBar
                   compact={compact}
                   canPersist={Boolean(userKey?.trim() && clientProfile)}
+                  captureNextLineForStaff={captureNextLineForStaff}
+                  onCaptureNextLineForStaffChange={setCaptureNextLineForStaff}
                   onPick={(kind) => persistStaffReaction(kind)}
                 />
               ) : null}
             </div>
           </div>
-        ))}
+        ));
+        })()}
         {loading && (
           <p className="flex items-center gap-2 text-stone-500">
             <Loader2 className="size-4 shrink-0 animate-spin" />
@@ -569,12 +646,17 @@ type StaffCheerBarProps = {
   compact: boolean;
   /** 有可寫入的 userKey／畫像時為 true（否則僅示意） */
   canPersist: boolean;
+  /** 下一則輸入框文字寫入醫護互動欄 */
+  captureNextLineForStaff: boolean;
+  onCaptureNextLineForStaffChange: (next: boolean) => void;
   onPick: (kind: "cheer" | "like") => Promise<void>;
 };
 
 function StaffCheerBar({
   compact,
   canPersist,
+  captureNextLineForStaff,
+  onCaptureNextLineForStaffChange,
   onPick,
 }: StaffCheerBarProps) {
   const [cheerDone, setCheerDone] = useState(false);
@@ -609,13 +691,33 @@ function StaffCheerBar({
       >
         若你也想替院內醫護／團隊打氣或默默按讚，可以點下面圖示；想多謝幾句，也歡迎用
         <strong className="font-medium text-stone-800">下面的輸入框</strong>
-        留言給小晴帶著走～都量力就好，沒有任何壓力。
+        留言給小晴帶著走～都量力就好，沒有任何壓力。具體感謝醫護／團隊的句子，在你送出後也會盡量寫進畫像裡；或點「下一則一併紀錄」更保險。
       </p>
       {!canPersist ? (
         <p className="mt-1.5 text-[0.65rem] text-amber-700/90">
           取得訪客識別並載入畫像後，再點選即可一併寫進「與醫護互動」紀錄。
         </p>
-      ) : null}
+      ) : (
+        <button
+          type="button"
+          onClick={() =>
+            onCaptureNextLineForStaffChange(!captureNextLineForStaff)
+          }
+          className={
+            captureNextLineForStaff
+              ? compact
+                ? "mt-2 w-full rounded-lg border-2 border-teal-500 bg-teal-50/90 px-2 py-1.5 text-left text-[0.65rem] font-medium text-teal-900"
+                : "mt-2 w-full rounded-lg border-2 border-teal-500 bg-teal-50/90 px-2.5 py-2 text-left text-xs font-medium text-teal-900"
+              : compact
+                ? "mt-2 w-full rounded-lg border border-stone-200/90 bg-white/80 px-2 py-1.5 text-left text-[0.65rem] text-stone-600 hover:bg-stone-50"
+                : "mt-2 w-full rounded-lg border border-stone-200/90 bg-white/80 px-2.5 py-2 text-left text-xs text-stone-600 hover:bg-stone-50"
+          }
+        >
+          {captureNextLineForStaff
+            ? "已開啟：下一則你在輸入框打的字，送出後會一併寫進「與醫護互動」。再點可取消。"
+            : "下一則輸入：一併紀錄到「與醫護互動」（畫像）"}
+        </button>
+      )}
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <button
           type="button"

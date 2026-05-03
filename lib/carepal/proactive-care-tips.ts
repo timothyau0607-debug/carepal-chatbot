@@ -55,7 +55,7 @@ export function formatPocketTipAsChat(role: UserRole, rawTip: string): string {
     body = normalized.slice(colonIdx + 1).trim();
   }
 
-  const pocket = "照顧／失智小錦囊";
+  const pocket = "照顧者小錦囊";
 
   if (role === "family") {
     if (headline) {

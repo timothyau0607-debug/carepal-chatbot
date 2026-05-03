@@ -56,7 +56,7 @@ function visitorTipBlock(role: UserRole, opts?: WelcomeOptions): string {
 
 /**
  * 首次開啟對話的招呼。若畫像已有稱呼或長期內容，則不追問稱呼，改以稱呼問候今日狀況；否則保留首次引導與稱呼一句。
- * 病友開場不含「照顧／失智小錦囊」；`WelcomeOptions` 僅對家屬開場生效。
+ * 病友開場不含「照顧者小錦囊」；`WelcomeOptions` 僅對家屬開場生效。
  */
 export function initialAssistantWelcome(
   role: UserRole,

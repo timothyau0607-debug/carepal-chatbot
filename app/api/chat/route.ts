@@ -130,7 +130,7 @@ export async function POST(request: Request) {
     const excerpt = pickProactiveCareTipForVariety(userRole, varietyKey).trim();
     if (excerpt.length >= 15) {
       midTipSource = {
-        source: "照顧／失智小錦囊",
+        source: "照顧者小錦囊",
         snippet:
           excerpt.length > 150 ? excerpt.slice(0, 150) + "…" : excerpt,
       };

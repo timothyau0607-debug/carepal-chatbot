@@ -161,7 +161,7 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
       if (pocketRaw) {
         onRagUpdate([
           {
-            source: "照顧／失智小錦囊",
+            source: "照顧者小錦囊",
             snippet:
               pocketRaw.length > 150
                 ? pocketRaw.slice(0, 150) + "…"

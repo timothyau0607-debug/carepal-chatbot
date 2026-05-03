@@ -5,7 +5,7 @@ import { isUserRole, type UserRole } from "@/lib/carepal/user-role";
 
 /**
  * GET /api/proactive-care-tip?role=family|patient&nonce=optional
- * 自「照顧／失智小錦囊」百題題庫依 nonce 穩定抽一則正文（不含開場聊天包裝）。
+ * 自「照顧者小錦囊」百題題庫依 nonce 穩定抽一則正文（不含開場聊天包裝）。
  */
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -25,7 +25,7 @@ export async function GET(request: Request) {
     }
     return NextResponse.json({
       tip,
-      source: "照顧／失智小錦囊",
+      source: "照顧者小錦囊",
     });
   } catch (e) {
     console.error("[carepal] proactive-care-tip", e);

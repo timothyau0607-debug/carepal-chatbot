@@ -252,9 +252,6 @@ export async function POST(request: Request) {
         userRole,
         userMessageCount,
         messages,
-        useCloudMemory,
-        memoryForPrompt,
-        clientProfile: body.clientProfile,
         lastStaffCheerOfferUserCount: body.lastStaffCheerOfferUserCount,
       });
       const injectStaffCheerHint = offerStaffCheerUi;

@@ -1,10 +1,11 @@
 import type { UserRole } from "@/lib/carepal/user-role";
-import { hasRecordedStaffSatisfactionInPrompt } from "@/lib/carepal/visit-staff-nudge";
 
 export type Msg = { role: string; content: string };
 
-const MIN_USER_MESSAGES_BEFORE_CHEER = 5;
-const MIN_USER_TURNS_BETWEEN_CHEER = 14;
+/** 使用者累積幾則訊息後可出現首次打氣／按讚區（對話約兩三相談後） */
+const MIN_USER_MESSAGES_BEFORE_CHEER = 4;
+/** 上次顯示後至少相隔幾則使用者訊息再出現（僅第二次之後適用） */
+const MIN_USER_TURNS_BETWEEN_CHEER = 10;
 
 /** 僅對家屬／病友；對醫護、院務帶強烈不信任或對立時不顯示打氣 UI。 */
 function userBubbleLooksClearlyNegative(text: string): boolean {
@@ -44,31 +45,20 @@ function recentUserMessages(
 
 /**
  * 本輪是否在 UI 附上「替醫護打氣／按讚」區塊（客戶端以 lastStaffCheerOfferUserCount 節流）。
+ *
+ * 刻意**不**併入 `hasRecordedStaffSatisfactionInPrompt`：該判定會把含有「謝謝／感謝」
+ * 的泛用謝詞（多半是謝小晴／謝衛教）當成「已填過醫護互動」，導致圖符區長期無法出現；
+ * 實質重複請求由節流與下方負向偵測吸收即可。
  */
 export function shouldOfferStaffCheerBanner(params: {
   userRole: UserRole;
   userMessageCount: number;
   messages: Msg[];
-  useCloudMemory: boolean;
-  memoryForPrompt: string;
-  clientProfile?: {
-    staff_interaction_satisfaction?: string;
-  } | null;
   lastStaffCheerOfferUserCount?: number;
 }): boolean {
   if (params.userRole !== "family" && params.userRole !== "patient")
     return false;
   if (params.userMessageCount < MIN_USER_MESSAGES_BEFORE_CHEER) return false;
-
-  if (
-    hasRecordedStaffSatisfactionInPrompt(
-      params.useCloudMemory,
-      params.memoryForPrompt,
-      params.clientProfile
-    )
-  ) {
-    return false;
-  }
 
   const lastMsgs = recentUserMessages(params.messages, 5);
   if (lastMsgs.some((t) => userBubbleLooksClearlyNegative(t))) {

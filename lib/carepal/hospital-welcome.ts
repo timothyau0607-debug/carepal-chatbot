@@ -10,9 +10,9 @@ const GUEST = "訪客";
 const MAX_NAME = 20;
 
 export type WelcomeOptions = {
-  /** RAG 摘錄正文（不含前綴）；有值且有長度則優先於靜態題庫 */
+  /** RAG 摘錄正文（不含前綴）；有值且有長度則優先於靜態題庫（僅 **家屬** 開場會包進招呼） */
   ragTipExcerpt?: string | null;
-  /** 每次開啟對話傳入不同字串，靜態小錦囊也會換題（與 RAG nonce 可同一值） */
+  /** 每次開啟對話傳入不同字串，靜態小錦囊也會換題（與 RAG nonce 可同一值）（僅 **家屬** 開場使用） */
   tipVarietyKey?: string;
 };
 
@@ -56,6 +56,7 @@ function visitorTipBlock(role: UserRole, opts?: WelcomeOptions): string {
 
 /**
  * 首次開啟對話的招呼。若畫像已有稱呼或長期內容，則不追問稱呼，改以稱呼問候今日狀況；否則保留首次引導與稱呼一句。
+ * 病友開場不含「照顧／失智小錦囊」；`WelcomeOptions` 僅對家屬開場生效。
  */
 export function initialAssistantWelcome(
   role: UserRole,
@@ -75,20 +76,38 @@ export function initialAssistantWelcome(
         .join("\n\n");
     }
     if (remembered) {
-      return `嗨，我是小晴～又見面了～${tipBlock}今天狀況怎麼樣？失智症或照顧想聊的都可以丟給我，我陪你釐清。`;
+      const greeting = `嗨，我是小晴～又見面了～`;
+      const closing =
+        `今天狀況怎麼樣？失智症或照顧想聊的都可以丟給我，我陪你釐清。`;
+      return [greeting, tipBlock || undefined, closing]
+        .filter(Boolean)
+        .join("\n\n");
     }
-    return `嗨，我是小晴～醫院裡陪你聊照顧的小助手，你好呀～有失智症或照顧上的困擾、疑問，也都可以隨時問我哦~! ${tipBlock}先問一下：方便怎麼稱呼你？`;
+    const intro =
+      `嗨，我是小晴～醫院裡陪你聊照顧的小助手，你好呀～有失智症或照顧上的困擾、疑問，也都可以隨時問我哦~!`;
+    const askName = `先問一下：方便怎麼稱呼你？`;
+    return [intro, tipBlock || undefined, askName]
+      .filter(Boolean)
+      .join("\n\n");
   }
 
   if (role === "patient") {
-    const tipBlock = visitorTipBlock("patient", opts);
     if (name) {
-      return `嗨，我是小晴～${name}，你好～又見面了。${tipBlock}今天身體或心情還好嗎？想問的儘管說。`;
+      return [
+        `嗨，我是小晴～${name}，你好～又見面了。`,
+        `今天身體或心情還好嗎？想問的儘管說。`,
+      ].join("\n\n");
     }
     if (remembered) {
-      return `嗨，我是小晴～又見面了～${tipBlock}今天想從哪方面聊？記憶、行動或身體有疑問，我盡力用短話幫你整理。`;
+      return [
+        `嗨，我是小晴～又見面了～`,
+        `今天想從哪方面聊？記憶、行動或身體有疑問，我盡力用短話幫你整理。`,
+      ].join("\n\n");
     }
-    return `嗨，我是小晴～在醫院裡陪你問問答答的小助手，很高興遇到你～記憶、行動或身體有疑問想聊都可以。${tipBlock}請問怎麼稱呼你？`;
+    return [
+      `嗨，我是小晴～在醫院裡陪你問問答答的小助手，很高興遇到你～記憶、行動或身體有疑問想聊都可以。`,
+      `請問怎麼稱呼你？`,
+    ].join("\n\n");
   }
 
   if (name) {

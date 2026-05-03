@@ -118,23 +118,30 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
         ? crypto.randomUUID()
         : `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
 
-    const pocketRaw = pickProactiveCareTipForVariety(
-      userRole,
-      welcomeTipNonce
-    ).trim();
-    if (pocketRaw) {
-      onRagUpdate([
-        {
-          source: "照顧／失智小錦囊",
-          snippet:
-            pocketRaw.length > 150 ? pocketRaw.slice(0, 150) + "…" : pocketRaw,
-        },
-      ]);
+    let welcomeOpts:
+      | { tipVarietyKey: string }
+      | undefined;
+
+    if (userRole === "family") {
+      const pocketRaw = pickProactiveCareTipForVariety(
+        userRole,
+        welcomeTipNonce
+      ).trim();
+      if (pocketRaw) {
+        onRagUpdate([
+          {
+            source: "照顧／失智小錦囊",
+            snippet:
+              pocketRaw.length > 150
+                ? pocketRaw.slice(0, 150) + "…"
+                : pocketRaw,
+          },
+        ]);
+      }
+      welcomeOpts = { tipVarietyKey: welcomeTipNonce };
     }
 
-    const welcome = initialAssistantWelcome(userRole, clientProfile, {
-      tipVarietyKey: welcomeTipNonce,
-    });
+    const welcome = initialAssistantWelcome(userRole, clientProfile, welcomeOpts);
     setTypewriterTarget(welcome);
   }, [userRole, clientProfile, onRagUpdate]);
 

@@ -59,9 +59,9 @@ export function formatPocketTipAsChat(role: UserRole, rawTip: string): string {
 
   if (role === "family") {
     if (headline) {
-      return `對了～今天「${pocket}」隨機抽到一則，跟你分享一下：「${headline}」。${body}`;
+      return `對了～今天「${pocket}」跟你分享一下：「${headline}」。${body}`;
     }
-    return `對了～今天「${pocket}」隨機抽到一則跟你聊聊——${body}`;
+    return `對了～今天「${pocket}」跟你聊聊——${body}`;
   }
   if (role === "patient") {
     if (headline) {

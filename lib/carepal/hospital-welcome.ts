@@ -66,9 +66,13 @@ export function initialAssistantWelcome(
   const remembered = name.length > 0 || hasProfileContext(profile);
 
   if (role === "family") {
-    const tipBlock = visitorTipBlock("family", opts);
+    const tipBlock = visitorTipBlock("family", opts).trimEnd();
     if (name) {
-      return `嗨，我是小晴～${name}，你好呀～又見面了。${tipBlock}今天自己或家人還好嗎？照顧上想聊的儘管說，我們慢慢一句一句來。`;
+      const greeting = `嗨，我是小晴～${name}，你好呀～又見面了。`;
+      const closing = `今天自己或家人還好嗎？照顧上想聊的儘管說。`;
+      return [greeting, tipBlock || undefined, closing]
+        .filter(Boolean)
+        .join("\n\n");
     }
     if (remembered) {
       return `嗨，我是小晴～又見面了～${tipBlock}今天狀況怎麼樣？失智症或照顧想聊的都可以丟給我，我陪你釐清。`;

@@ -4,6 +4,8 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   forwardRef,
@@ -105,6 +107,14 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
     null
   );
   const listRef = useRef<HTMLDivElement>(null);
+  /** 最後一則使用者訊息的外層列，用來對齊到對話區頂端 */
+  const latestUserMessageRowRef = useRef<HTMLDivElement | null>(null);
+  /** 使用者送出後：下一幀將其氣泡捲至清單頂緣（小晴在下面長出） */
+  const pendingAlignLatestUserBubbleRef = useRef(false);
+  /** 自使用者送出後、小晴開始打字前：不要自動捲到底（避免蓋過「問題置頂」） */
+  const suppressScrollBottomUntilAssistantTypingRef = useRef(false);
+  /** 只要對話區曾出現過使用者：小晴該輪打字結束後不要自動捲到底（長文閱讀） */
+  const suppressScrollBottomAfterAssistantDoneRef = useRef(false);
   const ttsIndexRef = useRef(-1);
   const onBeforeTtsRef = useRef(onBeforeTtsPlay);
   const onAfterTtsRef = useRef(onAfterTtsPlay);
@@ -281,6 +291,21 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
     });
   }, []);
 
+  const alignLatestUserMessageToTop = useCallback(() => {
+    const list = listRef.current;
+    const row = latestUserMessageRowRef.current;
+    if (!list || !row) return;
+    /** 對話框頂緣留白（對齊視覺，略小於 Tailwind padding） */
+    const insetPx = compact ? 6 : 8;
+    const dy =
+      row.getBoundingClientRect().top -
+      list.getBoundingClientRect().top -
+      insetPx;
+    const nextTop = list.scrollTop + dy;
+    const maxTop = Math.max(0, list.scrollHeight - list.clientHeight);
+    list.scrollTo({ top: Math.max(0, Math.min(nextTop, maxTop)), behavior: "auto" });
+  }, [compact]);
+
   /** API 已取得完整回覆時立即播出（不依賴逐字顯示結束），較接近即時對話 */
   const playReadAloudForFullReply = useCallback(
     (rawReply: string, assistantMessageIndex: number) => {
@@ -368,6 +393,8 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
 
       const next: ChatMsg[] = [...snapshot, { role: "user", content: t }];
       setMessages(next);
+      pendingAlignLatestUserBubbleRef.current = true;
+      suppressScrollBottomUntilAssistantTypingRef.current = true;
       setLoading(true);
 
       try {
@@ -402,6 +429,7 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
         if (!res.ok) {
           setError(data.error ?? `錯誤 ${res.status}`);
           setLoading(false);
+          suppressScrollBottomUntilAssistantTypingRef.current = false;
           return;
         }
         onRagUpdate(data.sources);
@@ -454,6 +482,7 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
       } catch {
         setError("網路錯誤，請再試一次。");
         setLoading(false);
+        suppressScrollBottomUntilAssistantTypingRef.current = false;
       }
     },
     [
@@ -469,19 +498,37 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
     ]
   );
 
-  /** 打字動畫中不捲到底；打字結束當下的 effect 亦不捲，避免長文打完又瞬間拉回底部 */
-  const skipScrollAfterAssistantTypingRef = useRef(false);
+  const lastUserMessageIndex = useMemo(() => {
+    let idx = -1;
+    for (let i = 0; i < messages.length; i++) {
+      if (messages[i]?.role === "user") idx = i;
+    }
+    return idx;
+  }, [messages]);
+
+  useLayoutEffect(() => {
+    if (!pendingAlignLatestUserBubbleRef.current) return;
+    pendingAlignLatestUserBubbleRef.current = false;
+    alignLatestUserMessageToTop();
+  }, [messages, alignLatestUserMessageToTop]);
 
   useEffect(() => {
+    const hasAnyUserBubble = messages.some((m) => m.role === "user");
     if (assistantTyping) {
-      skipScrollAfterAssistantTypingRef.current = true;
+      suppressScrollBottomUntilAssistantTypingRef.current = false;
+      if (hasAnyUserBubble) {
+        suppressScrollBottomAfterAssistantDoneRef.current = true;
+      }
       return;
     }
-    if (skipScrollAfterAssistantTypingRef.current) {
-      skipScrollAfterAssistantTypingRef.current = false;
+    if (suppressScrollBottomUntilAssistantTypingRef.current) {
       return;
     }
-    scrollListToEnd("smooth");
+    if (suppressScrollBottomAfterAssistantDoneRef.current) {
+      suppressScrollBottomAfterAssistantDoneRef.current = false;
+      return;
+    }
+    scrollListToEnd(messages.some((m) => m.role === "user") ? "smooth" : "auto");
   }, [messages, loading, assistantTyping, scrollListToEnd]);
 
   useImperativeHandle(
@@ -549,6 +596,13 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
         {messages.map((m, i) => (
           <div
             key={i}
+            ref={
+              m.role === "user" &&
+              i === lastUserMessageIndex &&
+              lastUserMessageIndex >= 0
+                ? latestUserMessageRowRef
+                : undefined
+            }
             className={
               m.role === "user"
                 ? "flex justify-end"

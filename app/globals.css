@@ -87,10 +87,40 @@ body {
   animation: carepal-staff-footer-in 0.52s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+/* 已完成按讚＋留言：整塊主面板往下看略帶份量感地移開，再接小橫列 */
+@keyframes carepal-staff-footer-dismiss-down {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  35% {
+    opacity: 0.92;
+    transform: translateY(0.2rem) scale(1.008);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(2rem) scale(0.94);
+    filter: blur(1px);
+  }
+}
+
+.carepal-staff-footer-dismiss-down {
+  animation: carepal-staff-footer-dismiss-down 0.56s cubic-bezier(0.4, 0, 0.2, 1)
+    forwards;
+  pointer-events: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .carepal-staff-footer-enter {
     animation: none;
     opacity: 1;
     transform: none;
+  }
+
+  .carepal-staff-footer-dismiss-down {
+    animation: none;
+    opacity: 0;
+    transform: translateY(0.25rem) scale(0.98);
+    filter: none;
   }
 }

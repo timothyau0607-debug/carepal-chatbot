@@ -8,7 +8,16 @@ import {
   useState,
   forwardRef,
 } from "react";
-import { Loader2, MessageSquarePlus, Send, ThumbsUp, Volume2, VolumeX } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  Loader2,
+  MessageSquarePlus,
+  Send,
+  ThumbsUp,
+  Volume2,
+  VolumeX,
+} from "lucide-react";
 import { pickXiaoqingVoice, XIAOQING_TTS } from "@/lib/carepal/tts-voice-pick";
 import {
   FormattedMessageBody,
@@ -643,10 +652,41 @@ function StaffSignalsFooter({
 }: StaffSignalsFooterProps) {
   const [likeDone, setLikeDone] = useState(false);
   const [likeBusy, setLikeBusy] = useState(false);
+  /** 成功送出過「留言打氣」 */
+  const [letterDone, setLetterDone] = useState(false);
   const [letterExpanded, setLetterExpanded] = useState(false);
   const [letterText, setLetterText] = useState("");
   const [letterBusy, setLetterBusy] = useState(false);
   const [letterOkHint, setLetterOkHint] = useState(false);
+  /** false = 已按讚且已留言後收納成細列 */
+  const [dockOpen, setDockOpen] = useState(true);
+  /** 雙達成或手動收納時：往下離場後再換小橫列 */
+  const [dismissAnimating, setDismissAnimating] = useState(false);
+
+  const completeDismissIntoMiniStrip = useCallback(() => {
+    setDismissAnimating(false);
+    setDockOpen(false);
+  }, []);
+
+  const beginCollapseWithExitAnimation = useCallback(() => {
+    setLetterExpanded(false);
+    const reduceMotion =
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduceMotion) {
+      completeDismissIntoMiniStrip();
+      return;
+    }
+    setDismissAnimating(true);
+  }, [completeDismissIntoMiniStrip]);
+
+  useEffect(() => {
+    if (!dismissAnimating) return;
+    const t = window.setTimeout(() => {
+      completeDismissIntoMiniStrip();
+    }, 660);
+    return () => window.clearTimeout(t);
+  }, [dismissAnimating, completeDismissIntoMiniStrip]);
 
   const btnBase =
     compact
@@ -659,6 +699,9 @@ function StaffSignalsFooter({
     try {
       await onPersistLike();
       setLikeDone(true);
+      if (letterDone) {
+        beginCollapseWithExitAnimation();
+      }
     } finally {
       setLikeBusy(false);
     }
@@ -672,8 +715,13 @@ function StaffSignalsFooter({
     try {
       const ok = await onPersistStaffLetter(t);
       if (ok) {
+        setLetterDone(true);
         setLetterText("");
         setLetterOkHint(true);
+        setLetterExpanded(false);
+        if (likeDone) {
+          beginCollapseWithExitAnimation();
+        }
         window.setTimeout(() => setLetterOkHint(false), 3200);
       }
     } finally {
@@ -681,14 +729,73 @@ function StaffSignalsFooter({
     }
   };
 
+  const bothDone = likeDone && letterDone;
+
+  if (bothDone && !dockOpen) {
+    return (
+      <div
+        className={`shrink-0 rounded-xl border border-stone-200/85 bg-teal-50/50 shadow-inner backdrop-blur-[2px] ${
+          compact ? "mt-1.5 px-2 py-1" : "mt-2 px-2.5 py-1.5"
+        }`}
+        role="region"
+        aria-label="對醫護團隊按讚與留言打氣（已收納）"
+      >
+        <button
+          type="button"
+          aria-expanded={false}
+          aria-controls="staff-footer-full-panel"
+          onClick={() => setDockOpen(true)}
+          className={`flex w-full min-w-0 items-center justify-between gap-2 rounded-lg text-left text-stone-700 transition hover:bg-white/75 ${
+            compact ? "py-1 text-[0.68rem]" : "py-0.5 text-xs"
+          }`}
+        >
+          <span className="min-w-0 truncate">
+            <span aria-hidden className="text-teal-600">
+              ✓
+            </span>{" "}
+            已向醫護按讚並送出留言，
+            <span className="whitespace-nowrap text-teal-800">點此展開區塊</span>
+          </span>
+          <ChevronDown
+            className={`${compact ? "size-4" : "size-[1.125rem]"} shrink-0 text-teal-600`}
+            aria-hidden
+          />
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div
-      className={`carepal-staff-footer-enter shrink-0 rounded-xl border border-stone-200/90 bg-gradient-to-br from-teal-50/35 via-white to-stone-50/80 shadow-inner ${
-        compact ? "mt-2 px-2 py-2" : "px-3 py-2"
-      }`}
+      id="staff-footer-full-panel"
+      onAnimationEnd={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (!String(e.animationName ?? "").includes("carepal-staff-footer-dismiss-down")) return;
+        completeDismissIntoMiniStrip();
+      }}
+      className={`shrink-0 rounded-xl border border-stone-200/90 bg-gradient-to-br from-teal-50/35 via-white to-stone-50/80 shadow-inner ${
+        dismissAnimating
+          ? "carepal-staff-footer-dismiss-down"
+          : "carepal-staff-footer-enter"
+      } ${compact ? "mt-2 px-2 py-2" : "px-3 py-2"}`}
       role="region"
       aria-label="對醫護團隊按讚與留言打氣"
     >
+      {bothDone ? (
+        <div className="mb-2 flex justify-end">
+          <button
+            type="button"
+            onClick={() => beginCollapseWithExitAnimation()}
+            className={`inline-flex items-center gap-1 rounded-lg border border-transparent px-2 py-1 font-medium text-stone-600 transition hover:border-stone-200/90 hover:bg-stone-50/90 ${
+              compact ? "text-[0.65rem]" : "text-xs"
+            }`}
+          >
+            <ChevronUp className="size-3.5 shrink-0" aria-hidden />
+            收納區塊
+          </button>
+        </div>
+      ) : null}
+
       <p
         className={
           compact

@@ -96,6 +96,22 @@ export async function POST(request: Request) {
     );
   }
 
+  for (const m of messages) {
+    const c =
+      typeof m.content === "string"
+        ? m.content.trim()
+        : "";
+    if (!c) {
+      return NextResponse.json(
+        {
+          error:
+            "對話紀錄含未完成或空白的訊息；請待小晴開場／回覆完整顯示後再送出。",
+        },
+        { status: 400 }
+      );
+    }
+  }
+
   const ranked = await retrieveRag(lastUser.content, 5);
   const ragText = formatRagForPrompt(ranked);
   const hasRagSnippets = !isRagPromptProbablyEmpty(ragText);

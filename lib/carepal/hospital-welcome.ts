@@ -116,5 +116,5 @@ export function initialAssistantWelcome(
   if (remembered) {
     return "嗨，我是小晴～又見面了～今天還順利嗎？想記重點或純聊天，都可以跟我說。";
   }
-  return "嗨，我是小晴～算大家的小助理師妹，在這陪你們喘口氣～很高興遇見你，今天一切都還順利嗎？";
+  return "嗨，我是小晴～是大家的小助理師妹，在這陪你們喘口氣～很高興遇見你，今天一切都還順利嗎？";
 }

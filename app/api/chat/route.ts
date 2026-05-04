@@ -43,6 +43,9 @@ import {
 
 type Msg = { role: "user" | "assistant"; content: string };
 
+/** 醫護端常出現多點建議／支持長文；預設 max_tokens 過低易在清單中途截斷 */
+const STAFF_COMPLETION_TOKEN_FLOOR = 1280;
+
 type Body = {
   messages?: Msg[];
   userKey?: string;
@@ -314,19 +317,49 @@ export async function POST(request: Request) {
       if (injectStaffCheerHint) {
         maxOutTokens = Math.max(maxOutTokens, 480);
       }
+      if (userRole === "staff") {
+        maxOutTokens = Math.max(maxOutTokens, STAFF_COMPLETION_TOKEN_FLOOR);
+      }
+
+      const chatMessages: {
+        role: "user" | "assistant" | "system";
+        content: string;
+      }[] = [
+        { role: "system", content: systemWithRag },
+        ...messages.map((m) => ({
+          role: m.role as "user" | "assistant",
+          content: m.content,
+        })),
+      ];
+
       const completion = await llm.client.chat.completions.create({
         model: llm.model,
-        messages: [
-          { role: "system", content: systemWithRag },
-          ...messages.map((m) => ({
-            role: m.role as "user" | "assistant",
-            content: m.content,
-          })),
-        ],
+        messages: chatMessages,
         max_tokens: maxOutTokens,
         temperature: 0.75,
       });
-      let out = completion.choices[0]?.message?.content?.trim() ?? "";
+      const choice0 = completion.choices[0];
+      let out = choice0?.message?.content?.trim() ?? "";
+      const finishReason = choice0?.finish_reason;
+
+      if (finishReason === "length" && out.length > 0) {
+        const continueUser =
+          "你上一則回覆可能因長度限制在半路結束。請從中斷處**直接接續**寫完（不要重頭重述已出現的段落），最後用一至兩句自然收尾。";
+        const cont = await llm.client.chat.completions.create({
+          model: llm.model,
+          messages: [
+            ...chatMessages,
+            { role: "assistant", content: out },
+            { role: "user", content: continueUser },
+          ],
+          max_tokens: Math.min(1400, Math.max(640, maxOutTokens)),
+          temperature: 0.65,
+        });
+        const tail = cont.choices[0]?.message?.content?.trim() ?? "";
+        if (tail.length > 0) {
+          out = `${out}\n\n${tail}`;
+        }
+      }
       if (
         !offerStaffCheerUi &&
         needRoomForStaffNudge &&

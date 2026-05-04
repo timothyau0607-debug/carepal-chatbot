@@ -176,7 +176,7 @@ function conversationalFromUiAgg(agg: UiAgg, tense: "today" | "yesterday"): stri
     s +=
       ` 順手替你們捎一句：` +
       letterSnips.map((x) => `「${x}」`).join("、") +
-      `——一樣是摘錄、別當逐字公文喔。`;
+      "。";
   }
 
   return s.trim();

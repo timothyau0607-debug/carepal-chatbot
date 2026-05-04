@@ -10,6 +10,7 @@ import {
   useState,
   forwardRef,
 } from "react";
+import { flushSync } from "react-dom";
 import {
   ChevronDown,
   ChevronUp,
@@ -107,6 +108,9 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
     null
   );
   const listRef = useRef<HTMLDivElement>(null);
+  /** 對話區可捲內容不足時底部暫增高，讓 scrollTop 能把使用者訊息對齊視窗頂 */
+  const [bottomScrollAssistPx, setBottomScrollAssistPx] = useState(0);
+
   /** 使用者送出後：下一幀將其氣泡捲至清單頂緣（小晴在下面長出） */
   const pendingAlignLatestUserBubbleRef = useRef(false);
   /** 自使用者送出後、小晴開始打字前：不要自動捲到底（避免蓋過「問題置頂」） */
@@ -293,24 +297,56 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
     const list = listRef.current;
     if (!list) return;
     const row = list.querySelector<HTMLElement>(
-      "[data-carepal-latest-user-pin]"
+      '[data-carepal-user-pin="1"]'
     );
     if (!row) return;
 
-    /** 對齊到最近捲動父層的可視區頂部，再細調留白 */
-    row.scrollIntoView({ block: "start", inline: "nearest", behavior: "auto" });
-
     const insetPx = compact ? 6 : 8;
-    const dy =
-      row.getBoundingClientRect().top -
-      list.getBoundingClientRect().top -
-      insetPx;
-    const nextTop = list.scrollTop + dy;
-    const maxTop = Math.max(0, list.scrollHeight - list.clientHeight);
-    list.scrollTo({
-      top: Math.max(0, Math.min(nextTop, maxTop)),
-      behavior: "auto",
-    });
+
+    const apply = (): void => {
+      const listRect = list.getBoundingClientRect();
+      const rowRect = row.getBoundingClientRect();
+      const delta = rowRect.top - listRect.top - insetPx;
+      let desiredTop = list.scrollTop + delta;
+      let maxTop = Math.max(0, list.scrollHeight - list.clientHeight);
+      let shortage = Math.ceil(desiredTop - maxTop);
+
+      if (shortage > 0) {
+        flushSync(() => {
+          setBottomScrollAssistPx((prev) => Math.max(prev, shortage));
+        });
+        const delta2 =
+          row.getBoundingClientRect().top -
+          list.getBoundingClientRect().top -
+          insetPx;
+        desiredTop = list.scrollTop + delta2;
+        maxTop = Math.max(0, list.scrollHeight - list.clientHeight);
+        shortage = Math.ceil(desiredTop - maxTop);
+        if (shortage > 0) {
+          flushSync(() => {
+            setBottomScrollAssistPx((prev) => Math.max(prev, shortage));
+          });
+        }
+      }
+
+      const fine =
+        row.getBoundingClientRect().top -
+        list.getBoundingClientRect().top -
+        insetPx;
+      const cap = Math.max(0, list.scrollHeight - list.clientHeight);
+      list.scrollTop = Math.max(0, Math.min(list.scrollTop + fine, cap));
+
+      const fine2 =
+        row.getBoundingClientRect().top -
+        list.getBoundingClientRect().top -
+        insetPx;
+      if (Math.abs(fine2) > 1) {
+        const cap2 = Math.max(0, list.scrollHeight - list.clientHeight);
+        list.scrollTop = Math.max(0, Math.min(list.scrollTop + fine2, cap2));
+      }
+    };
+
+    apply();
   }, [compact]);
 
   /** API 已取得完整回覆時立即播出（不依賴逐字顯示結束），較接近即時對話 */
@@ -393,6 +429,7 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
       if (last?.role === "assistant" && !last.content.trim()) return;
       setError(null);
       setText("");
+      setBottomScrollAssistPx(0);
 
       onActivityLine(
         `剛剛：${t.length > 36 ? t.slice(0, 36) + "…" : t}`
@@ -437,6 +474,7 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
           setError(data.error ?? `錯誤 ${res.status}`);
           setLoading(false);
           suppressScrollBottomUntilAssistantTypingRef.current = false;
+          setBottomScrollAssistPx(0);
           return;
         }
         onRagUpdate(data.sources);
@@ -490,6 +528,7 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
         setError("網路錯誤，請再試一次。");
         setLoading(false);
         suppressScrollBottomUntilAssistantTypingRef.current = false;
+        setBottomScrollAssistPx(0);
       }
     },
     [
@@ -613,7 +652,10 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
             {...(m.role === "user" &&
             i === lastUserMessageIndex &&
             lastUserMessageIndex >= 0
-              ? { "data-carepal-latest-user-pin": "" }
+              ? {
+                  "data-carepal-latest-user-pin": "",
+                  "data-carepal-user-pin": "1",
+                }
               : {})}
             className={
               m.role === "user"
@@ -645,6 +687,14 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
             </div>
           </div>
         ))}
+        <div
+          aria-hidden
+          className="shrink-0"
+          style={{
+            height: bottomScrollAssistPx,
+            pointerEvents: "none",
+          }}
+        />
         {loading && (
           <p className="flex items-center gap-2 text-stone-500">
             <Loader2 className="size-4 shrink-0 animate-spin" />

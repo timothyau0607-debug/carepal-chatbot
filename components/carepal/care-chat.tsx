@@ -8,6 +8,7 @@ import {
   useState,
   forwardRef,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   ChevronDown,
   ChevronUp,
@@ -114,6 +115,48 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
   const lastStaffCheerOfferUserCountRef = useRef(0);
   /** 近端伺服器曾建議開啟「醫護打氣」後：此時間內對話自動辨識可併入致醫護留言 */
   const staffLetterPromptOpenedAtMsRef = useRef(0);
+  /** 手機緊湊版面：獨立全螢幕輸入層，不把鍵盤綁在主 flex + 100dvh 區塊以避免跳動 */
+  const [mobileComposerOpen, setMobileComposerOpen] = useState(false);
+  const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const [composerLayerMounted, setComposerLayerMounted] = useState(false);
+
+  useEffect(() => {
+    setComposerLayerMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!compact || !mobileComposerOpen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [compact, mobileComposerOpen]);
+
+  useEffect(() => {
+    if (!compact || !mobileComposerOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMobileComposerOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [compact, mobileComposerOpen]);
+
+  useEffect(() => {
+    if (!compact || !mobileComposerOpen) return;
+    const el = composerTextareaRef.current;
+    if (!el) return;
+    const t = window.setTimeout(() => {
+      try {
+        el.focus();
+        const len = el.value.length;
+        el.setSelectionRange(len, len);
+      } catch {
+        el.focus();
+      }
+    }, 100);
+    return () => window.clearTimeout(t);
+  }, [compact, mobileComposerOpen]);
 
   useEffect(() => {
     onBeforeTtsRef.current = onBeforeTtsPlay;
@@ -332,6 +375,7 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
     async (raw: string) => {
       const t = raw.trim();
       if (!t || loading || assistantTyping) return;
+      if (compact) setMobileComposerOpen(false);
       const snapshot = messagesRef.current;
       const last = snapshot.length > 0 ? snapshot[snapshot.length - 1] : null;
       /** 開場白尚未寫入（例如醫護端非同步載入 briefing）、或小晴回覆氣泡仍空白時，不要送出，否則 API 缺少上一則小晴內容 */
@@ -434,6 +478,7 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
       }
     },
     [
+      compact,
       loading,
       assistantTyping,
       onRagUpdate,
@@ -445,6 +490,15 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
       onReplyComplete,
     ]
   );
+
+  /** 先在獨立層關閉鍵盤再送出，較不中斷主畫面佈局 */
+  const submitFromMobileComposer = useCallback(() => {
+    const trimmed = text.trim();
+    if (!trimmed || loading || assistantTyping) return;
+    requestAnimationFrame(() => {
+      void submitUserText(trimmed);
+    });
+  }, [text, loading, assistantTyping, submitUserText]);
 
   useEffect(() => {
     scrollListToEnd("smooth");
@@ -604,35 +658,136 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
         )}
       </label>
 
-      <form
-        className="flex w-full min-w-0 shrink-0 gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void submitUserText(text);
-        }}
-      >
-        <input
-          className={
-            compact
-              ? "min-w-0 flex-1 rounded-xl border border-stone-200 bg-white px-3 py-2 text-base leading-snug text-stone-800 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-teal-500"
-              : "min-w-0 flex-1 rounded-xl border border-stone-200 bg-white px-2 py-2 text-sm text-stone-800 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-teal-500 sm:px-3"
-          }
-          placeholder="輸入想問的照護問題…"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          maxLength={800}
-          disabled={loading || assistantTyping}
-          aria-label="訊息輸入"
-        />
-        <button
-          type="submit"
-          disabled={loading || assistantTyping || !text.trim()}
-          className={`inline-flex shrink-0 items-center justify-center gap-1 rounded-xl bg-teal-600 font-medium text-white shadow-sm transition hover:bg-teal-500 disabled:cursor-not-allowed disabled:opacity-50 ${compact ? "min-h-[2.75rem] px-3 py-2 text-base" : "px-3 py-2 text-sm"}`}
+      {compact ? (
+        <>
+          <div className="flex w-full min-w-0 shrink-0 items-stretch gap-2">
+            <button
+              type="button"
+              disabled={loading || assistantTyping}
+              aria-haspopup="dialog"
+              aria-expanded={mobileComposerOpen}
+              aria-label="開啟文字輸入"
+              onClick={() => {
+                if (loading || assistantTyping) return;
+                setMobileComposerOpen(true);
+              }}
+              className={`flex min-h-[2.75rem] min-w-0 flex-1 cursor-pointer rounded-xl border border-stone-200 bg-white px-3 py-2 text-left shadow-sm transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-55 ${
+                text.trim().length === 0
+                  ? "text-stone-400"
+                  : "text-stone-800"
+              }`}
+            >
+              <span className="line-clamp-1 flex-1 text-base leading-snug">
+                {text.trim().length > 0 ? text : "輕觸此處打字問小晴…"}
+              </span>
+            </button>
+            <button
+              type="button"
+              disabled={loading || assistantTyping || !text.trim()}
+              aria-label="送出訊息"
+              onClick={() => void submitUserText(text)}
+              className="inline-flex min-h-[2.75rem] shrink-0 items-center justify-center gap-1 rounded-xl bg-teal-600 px-3 font-medium text-white shadow-sm transition hover:bg-teal-500 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Send className="size-4 shrink-0" aria-hidden />
+            </button>
+          </div>
+
+          {composerLayerMounted &&
+            typeof document !== "undefined" &&
+            mobileComposerOpen &&
+            createPortal(
+              <div className="carepal-chat-mobile-composer isolate">
+                <button
+                  type="button"
+                  className="fixed inset-0 z-[650] bg-black/45 backdrop-blur-[2px] touch-manipulation"
+                  aria-label="關閉輸入並返回對話"
+                  onClick={() => setMobileComposerOpen(false)}
+                />
+                <div
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="carepal-chat-composer-title"
+                  className="fixed bottom-0 left-0 right-0 z-[660] mx-auto flex max-h-[calc(100dvh-16px-env(safe-area-inset-bottom,0px))] max-w-[100vw] min-h-0 flex-col gap-3 rounded-t-2xl border border-stone-200/90 bg-white px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] shadow-[0_-14px_40px_-12px_rgba(0,0,0,0.2)]"
+                  style={{ touchAction: "manipulation" }}
+                >
+                  <div className="flex shrink-0 items-start justify-between gap-3 border-b border-stone-100 pb-3">
+                    <p
+                      id="carepal-chat-composer-title"
+                      className="text-base font-semibold text-stone-800"
+                    >
+                      輸入訊息
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setMobileComposerOpen(false)}
+                      className="rounded-lg px-2 py-1 text-sm font-medium text-teal-800 hover:bg-teal-50"
+                    >
+                      完成
+                    </button>
+                  </div>
+                  <textarea
+                    ref={composerTextareaRef}
+                    className="min-h-[10rem] w-full flex-1 resize-y rounded-xl border border-stone-200 bg-stone-50/40 px-3 py-2.5 text-base leading-snug text-stone-900 shadow-inner placeholder:text-stone-400 focus:border-teal-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/35"
+                    placeholder="想問或想說的照護問題…（可換行）"
+                    maxLength={800}
+                    rows={10}
+                    value={text}
+                    onChange={(e) => setText(e.target.value)}
+                    spellCheck={false}
+                    disabled={loading || assistantTyping}
+                    enterKeyHint="done"
+                  />
+                  <div className="flex shrink-0 gap-2 pt-1">
+                    <button
+                      type="button"
+                      className="min-h-[2.85rem] flex-1 rounded-xl border border-stone-200 bg-white font-medium text-stone-700 shadow-sm transition hover:bg-stone-50"
+                      onClick={() => setMobileComposerOpen(false)}
+                    >
+                      取消
+                    </button>
+                    <button
+                      type="button"
+                      disabled={
+                        loading || assistantTyping || !text.trim().length
+                      }
+                      className="min-h-[2.85rem] flex-[1.2] rounded-xl bg-teal-600 font-medium text-white shadow-sm transition hover:bg-teal-500 disabled:cursor-not-allowed disabled:opacity-45"
+                      onClick={() => submitFromMobileComposer()}
+                    >
+                      送出
+                    </button>
+                  </div>
+                </div>
+              </div>,
+              document.body
+            )}
+        </>
+      ) : (
+        <form
+          className="flex w-full min-w-0 shrink-0 gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void submitUserText(text);
+          }}
         >
-          <Send className="size-4 shrink-0" aria-hidden />
-          <span className={compact ? "sr-only" : undefined}>送出</span>
-        </button>
-      </form>
+          <input
+            className="min-w-0 flex-1 rounded-xl border border-stone-200 bg-white px-2 py-2 text-sm text-stone-800 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-teal-500 sm:px-3"
+            placeholder="輸入想問的照護問題…"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            maxLength={800}
+            disabled={loading || assistantTyping}
+            aria-label="訊息輸入"
+          />
+          <button
+            type="submit"
+            disabled={loading || assistantTyping || !text.trim()}
+            className="inline-flex shrink-0 items-center justify-center gap-1 rounded-xl bg-teal-600 px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-teal-500 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Send className="size-4 shrink-0" aria-hidden />
+            <span>送出</span>
+          </button>
+        </form>
+      )}
     </div>
   );
 });

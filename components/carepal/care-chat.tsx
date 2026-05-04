@@ -691,10 +691,10 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
             typeof document !== "undefined" &&
             mobileComposerOpen &&
             createPortal(
-              <div className="carepal-chat-mobile-composer isolate">
+              <div className="carepal-chat-mobile-composer fixed inset-0 isolate z-[650] overflow-hidden overscroll-none">
                 <button
                   type="button"
-                  className="fixed inset-0 z-[650] bg-black/45 backdrop-blur-[2px] touch-manipulation"
+                  className="absolute inset-0 z-[650] bg-black/45 backdrop-blur-[2px] touch-manipulation"
                   aria-label="關閉輸入並返回對話"
                   onClick={() => setMobileComposerOpen(false)}
                 />
@@ -702,27 +702,26 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
                   role="dialog"
                   aria-modal="true"
                   aria-labelledby="carepal-chat-composer-title"
-                  className="fixed bottom-0 left-0 right-0 z-[660] mx-auto flex max-h-[min(calc(100dvh-16px-env(safe-area-inset-bottom,0px)),28rem)] max-w-[100vw] min-h-0 flex-col gap-2 rounded-t-2xl border border-stone-200/90 bg-white px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom,0px))] shadow-[0_-14px_40px_-12px_rgba(0,0,0,0.2)]"
-                  style={{ touchAction: "manipulation" }}
+                  className="absolute bottom-0 left-0 right-0 z-[660] mx-auto box-border flex min-h-0 w-full max-w-full min-w-0 max-h-[min(26rem,min(92svh,calc(100dvh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)-12px)))] flex-col gap-2 overflow-x-hidden overflow-y-auto overscroll-y-contain rounded-t-2xl border border-stone-200/90 bg-white pt-3 pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))] pb-[max(1rem,env(safe-area-inset-bottom,0px))] shadow-[0_-14px_40px_-12px_rgba(0,0,0,0.2)] [touch-action:manipulation]"
                 >
-                  <div className="flex shrink-0 items-start justify-between gap-3 border-b border-stone-100 pb-2">
+                  <div className="flex min-h-0 w-full min-w-0 shrink-0 items-start justify-between gap-2 border-b border-stone-100 pb-2">
                     <p
                       id="carepal-chat-composer-title"
-                      className="text-base font-semibold text-stone-800"
+                      className="min-w-0 flex-1 text-base font-semibold text-stone-800"
                     >
                       輸入訊息
                     </p>
                     <button
                       type="button"
                       onClick={() => setMobileComposerOpen(false)}
-                      className="rounded-lg px-2 py-1 text-sm font-medium text-teal-800 hover:bg-teal-50"
+                      className="shrink-0 rounded-lg px-2 py-1 text-sm font-medium text-teal-800 hover:bg-teal-50"
                     >
                       完成
                     </button>
                   </div>
                   <textarea
                     ref={composerTextareaRef}
-                    className="max-h-[min(20rem,50svh)] min-h-[6.75rem] w-full shrink-0 resize-y overflow-y-auto rounded-xl border border-stone-200 bg-stone-50/40 px-3 py-2 text-sm leading-snug text-stone-900 shadow-inner placeholder:text-stone-400 focus:border-teal-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/35"
+                    className="max-h-[min(16rem,min(42svh,45dvh))] min-h-[6.75rem] w-full max-w-full min-w-0 shrink-0 resize-y overflow-y-auto rounded-xl border border-stone-200 bg-stone-50/40 px-3 py-2 text-sm leading-snug text-stone-900 shadow-inner [box-sizing:border-box] placeholder:text-stone-400 focus:border-teal-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-inset focus:ring-teal-500/35"
                     placeholder="想問或想說的照護問題…（可換行）"
                     maxLength={800}
                     rows={4}
@@ -732,10 +731,10 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
                     disabled={loading || assistantTyping}
                     enterKeyHint="done"
                   />
-                  <div className="flex shrink-0 gap-2 pt-0.5">
+                  <div className="flex min-h-0 w-full min-w-0 shrink-0 gap-2 pb-px pt-0.5">
                     <button
                       type="button"
-                      className="min-h-[2.75rem] flex-1 rounded-xl border border-stone-200 bg-white text-sm font-medium text-stone-700 shadow-sm transition hover:bg-stone-50"
+                      className="min-h-[2.75rem] min-w-0 flex-1 rounded-xl border border-stone-200 bg-white text-sm font-medium text-stone-700 shadow-sm transition hover:bg-stone-50"
                       onClick={() => setMobileComposerOpen(false)}
                     >
                       取消
@@ -745,7 +744,7 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
                       disabled={
                         loading || assistantTyping || !text.trim().length
                       }
-                      className="min-h-[2.75rem] flex-[1.2] rounded-xl bg-teal-600 text-sm font-medium text-white shadow-sm transition hover:bg-teal-500 disabled:cursor-not-allowed disabled:opacity-45"
+                      className="min-h-[2.75rem] min-w-0 flex-[1.2] shrink-0 rounded-xl bg-teal-600 text-sm font-medium text-white shadow-sm transition hover:bg-teal-500 disabled:cursor-not-allowed disabled:opacity-45"
                       onClick={() => submitFromMobileComposer()}
                     >
                       送出

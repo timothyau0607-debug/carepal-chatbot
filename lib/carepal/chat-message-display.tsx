@@ -43,7 +43,7 @@ function isOrderedListBlock(block: string): boolean {
 export function FormattedMessageBody({
   role,
   content,
-  /** 逐字顯示中：不重排區塊／清單、不用 text-wrap pretty，避免已出現的行反覆換行跳動 */
+  /** 逐字顯示中：content 須為「完整回覆經 normalizeAssistantTextForDisplay 後」的前綴；行內 **粗體** 與換行與完稿一致，條列仍於完稿後轉成 ol */
   streaming = false,
 }: {
   role: "user" | "assistant";
@@ -51,9 +51,10 @@ export function FormattedMessageBody({
   streaming?: boolean;
 }): ReactNode {
   if (role === "assistant" && streaming) {
+    /** content 已由外層依「完整回覆先做顯示正規化」後再切片，此處不重跑 normalize */
     return (
       <div className="min-w-0 whitespace-pre-wrap break-words text-[15px] leading-relaxed text-stone-800 [overflow-wrap:anywhere]">
-        {content}
+        {renderInlineBold(content)}
       </div>
     );
   }
@@ -73,7 +74,7 @@ export function FormattedMessageBody({
 
   const blocks = text.split(/\n{2,}/);
   return (
-    <div className="min-w-0 space-y-3 break-words text-[15px] leading-relaxed text-stone-800 [overflow-wrap:anywhere] [text-wrap:pretty]">
+    <div className="min-w-0 space-y-3 break-words text-[15px] leading-relaxed text-stone-800 [overflow-wrap:anywhere]">
       {blocks.map((block, bi) => {
         const trimmed = block.trim();
         if (!trimmed) return null;

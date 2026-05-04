@@ -21,6 +21,7 @@ import {
 import { pickXiaoqingVoice, XIAOQING_TTS } from "@/lib/carepal/tts-voice-pick";
 import {
   FormattedMessageBody,
+  normalizeAssistantTextForDisplay,
   plainTextForSpeechFromAssistant,
 } from "@/lib/carepal/chat-message-display";
 import { initialAssistantWelcome } from "@/lib/carepal/hospital-welcome";
@@ -200,10 +201,30 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
   useEffect(() => {
     if (!typewriterTarget) return;
     let i = 0;
-    const full = typewriterTarget;
-    if (!full) {
+    const rawFull = typewriterTarget;
+    if (!rawFull) {
       setTypewriterTarget(null);
       setAssistantTyping(false);
+      return;
+    }
+    /** 先對完整回覆做一次顯示正規化，再逐字 slicing，打字完稿後與非 streaming 格式化一致（僅多出條列 ol 結構） */
+    const displayFull = normalizeAssistantTextForDisplay(rawFull);
+    if (displayFull.length === 0) {
+      setMessages((prev) => {
+        if (prev.length === 0) return prev;
+        const c = [...prev];
+        const last = c.length - 1;
+        if (c[last]?.role !== "assistant") return prev;
+        c[last] = { role: "assistant", content: "" };
+        return c;
+      });
+      setTypewriterTarget(null);
+      setAssistantTyping(false);
+      if (skipNextReplyCompleteRef.current) {
+        skipNextReplyCompleteRef.current = false;
+      } else {
+        onReplyCompleteRef.current?.();
+      }
       return;
     }
     let cancelled = false;
@@ -216,10 +237,13 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
         const c = [...prev];
         const last = c.length - 1;
         if (c[last]?.role !== "assistant") return prev;
-        c[last] = { role: "assistant", content: full.slice(0, i) };
+        c[last] = {
+          role: "assistant",
+          content: displayFull.slice(0, Math.min(i, displayFull.length)),
+        };
         return c;
       });
-      if (i < full.length) {
+      if (i < displayFull.length) {
         window.setTimeout(step, 20);
       } else {
         setTypewriterTarget(null);

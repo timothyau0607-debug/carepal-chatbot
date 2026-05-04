@@ -43,10 +43,21 @@ function isOrderedListBlock(block: string): boolean {
 export function FormattedMessageBody({
   role,
   content,
+  /** 逐字顯示中：不重排區塊／清單、不用 text-wrap pretty，避免已出現的行反覆換行跳動 */
+  streaming = false,
 }: {
   role: "user" | "assistant";
   content: string;
+  streaming?: boolean;
 }): ReactNode {
+  if (role === "assistant" && streaming) {
+    return (
+      <div className="min-w-0 whitespace-pre-wrap break-words text-[15px] leading-relaxed text-stone-800 [overflow-wrap:anywhere]">
+        {content}
+      </div>
+    );
+  }
+
   const text =
     role === "assistant"
       ? normalizeAssistantTextForDisplay(content)

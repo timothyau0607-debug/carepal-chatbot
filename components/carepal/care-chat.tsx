@@ -511,31 +511,41 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
               : "可打字或點麥克風說話。例如：「阿公傍晚一直想出門怎麼辦？」"}
           </p>
         )}
-        {messages.map((m, i) => (
-          <div
-            key={i}
-            className={
-              m.role === "user"
-                ? "flex justify-end"
-                : "flex justify-start"
-            }
-          >
+        {messages.map((m, i) => {
+          const streamingAssistant =
+            m.role === "assistant" &&
+            assistantTyping &&
+            i === messages.length - 1;
+          return (
             <div
+              key={i}
               className={
                 m.role === "user"
-                  ? "max-w-[min(22rem,calc(100%-0.25rem))] min-w-0 rounded-lg bg-teal-50/90 px-3 py-2 text-stone-800"
-                  : "max-w-[min(22rem,calc(100%-0.25rem))] min-w-0 rounded-lg bg-stone-100/90 px-3 py-2.5 text-stone-800"
+                  ? "flex justify-end"
+                  : "flex justify-start"
               }
             >
-              <p className="text-xs text-stone-500">
-                {m.role === "user" ? "你" : "小晴"} ·
-              </p>
-              <div className="mt-1 min-w-0">
-                <FormattedMessageBody role={m.role} content={m.content} />
+              <div
+                className={
+                  m.role === "user"
+                    ? "max-w-[min(22rem,calc(100%-0.25rem))] min-w-0 rounded-lg bg-teal-50/90 px-3 py-2 text-stone-800"
+                    : "max-w-[min(22rem,calc(100%-0.25rem))] min-w-0 rounded-lg bg-stone-100/90 px-3 py-2.5 text-stone-800"
+                }
+              >
+                <p className="text-xs text-stone-500">
+                  {m.role === "user" ? "你" : "小晴"} ·
+                </p>
+                <div className="mt-1 min-w-0">
+                  <FormattedMessageBody
+                    role={m.role}
+                    content={m.content}
+                    streaming={streamingAssistant}
+                  />
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         {loading && (
           <p className="flex items-center gap-2 text-stone-500">
             <Loader2 className="size-4 shrink-0 animate-spin" />

@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
   useState,
   forwardRef,
@@ -118,6 +119,7 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
   /** 手機緊湊版面：獨立全螢幕輸入層，不把鍵盤綁在主 flex + 100dvh 區塊以避免跳動 */
   const [mobileComposerOpen, setMobileComposerOpen] = useState(false);
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const composerPortalRootRef = useRef<HTMLDivElement | null>(null);
   const [composerLayerMounted, setComposerLayerMounted] = useState(false);
 
   useEffect(() => {
@@ -126,10 +128,64 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
 
   useEffect(() => {
     if (!compact || !mobileComposerOpen) return;
-    const prevOverflow = document.body.style.overflow;
+    const html = document.documentElement;
+    const prevBodyOverflow = document.body.style.overflow;
+    const prevHtmlOverflow = html.style.overflow;
     document.body.style.overflow = "hidden";
+    html.style.overflow = "hidden";
     return () => {
-      document.body.style.overflow = prevOverflow;
+      document.body.style.overflow = prevBodyOverflow;
+      html.style.overflow = prevHtmlOverflow;
+    };
+  }, [compact, mobileComposerOpen]);
+
+  /** 對齊 visualViewport（含鍵盤彈起），避免 fixed 仍以 layout viewport 計算而跑出螢幕可視區 */
+  useLayoutEffect(() => {
+    if (!compact || !mobileComposerOpen) return;
+    const root = composerPortalRootRef.current;
+    if (!root) return;
+
+    const clearRootBox = () => {
+      root.style.removeProperty("position");
+      root.style.removeProperty("top");
+      root.style.removeProperty("left");
+      root.style.removeProperty("right");
+      root.style.removeProperty("bottom");
+      root.style.removeProperty("width");
+      root.style.removeProperty("height");
+    };
+
+    const sync = () => {
+      const vv = window.visualViewport;
+      root.style.position = "fixed";
+      if (vv) {
+        root.style.top = `${vv.offsetTop}px`;
+        root.style.left = `${vv.offsetLeft}px`;
+        root.style.right = "auto";
+        root.style.bottom = "auto";
+        root.style.width = `${vv.width}px`;
+        root.style.height = `${vv.height}px`;
+      } else {
+        root.style.top = "0";
+        root.style.left = "0";
+        root.style.right = "0";
+        root.style.bottom = "0";
+        root.style.width = `${Math.round(window.innerWidth)}px`;
+        root.style.height = `${Math.round(window.innerHeight)}px`;
+      }
+    };
+
+    sync();
+    const vv = window.visualViewport;
+    vv?.addEventListener("resize", sync);
+    vv?.addEventListener("scroll", sync);
+    window.addEventListener("resize", sync);
+
+    return () => {
+      vv?.removeEventListener("resize", sync);
+      vv?.removeEventListener("scroll", sync);
+      window.removeEventListener("resize", sync);
+      clearRootBox();
     };
   }, [compact, mobileComposerOpen]);
 
@@ -691,7 +747,10 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
             typeof document !== "undefined" &&
             mobileComposerOpen &&
             createPortal(
-              <div className="carepal-chat-mobile-composer fixed inset-0 isolate z-[650] overflow-hidden overscroll-none">
+              <div
+                ref={composerPortalRootRef}
+                className="carepal-chat-mobile-composer isolate z-[650] overflow-hidden overscroll-none"
+              >
                 <button
                   type="button"
                   className="absolute inset-0 z-[650] bg-black/45 backdrop-blur-[2px] touch-manipulation"
@@ -702,7 +761,7 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
                   role="dialog"
                   aria-modal="true"
                   aria-labelledby="carepal-chat-composer-title"
-                  className="absolute bottom-0 left-0 right-0 z-[660] mx-auto box-border flex min-h-0 w-full max-w-full min-w-0 max-h-[min(26rem,min(92svh,calc(100dvh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)-12px)))] flex-col gap-2 overflow-x-hidden overflow-y-auto overscroll-y-contain rounded-t-2xl border border-stone-200/90 bg-white pt-3 pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))] pb-[max(1rem,env(safe-area-inset-bottom,0px))] shadow-[0_-14px_40px_-12px_rgba(0,0,0,0.2)] [touch-action:manipulation]"
+                  className="absolute inset-x-0 bottom-0 z-[660] mx-auto box-border flex max-h-[calc(100%-6px)] min-h-0 w-full min-w-0 max-w-full flex-col gap-2 overflow-x-hidden overflow-y-auto overscroll-y-contain rounded-t-2xl border border-stone-200/90 bg-white pt-3 pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))] pb-[max(1rem,env(safe-area-inset-bottom,0px))] shadow-[0_-14px_40px_-12px_rgba(0,0,0,0.2)] [touch-action:manipulation]"
                 >
                   <div className="flex min-h-0 w-full min-w-0 shrink-0 items-start justify-between gap-2 border-b border-stone-100 pb-2">
                     <p

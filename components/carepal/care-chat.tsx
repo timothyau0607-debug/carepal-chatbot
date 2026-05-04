@@ -683,7 +683,7 @@ function StaffSignalsFooter({
 
   return (
     <div
-      className={`shrink-0 rounded-xl border border-stone-200/90 bg-gradient-to-br from-teal-50/35 via-white to-stone-50/80 shadow-inner ${
+      className={`carepal-staff-footer-enter shrink-0 rounded-xl border border-stone-200/90 bg-gradient-to-br from-teal-50/35 via-white to-stone-50/80 shadow-inner ${
         compact ? "mt-2 px-2 py-2" : "px-3 py-2"
       }`}
       role="region"
@@ -696,9 +696,7 @@ function StaffSignalsFooter({
             : "text-xs leading-relaxed text-stone-600"
         }
       >
-        想謝謝醫護的話，請用下方<strong className="font-medium text-stone-700">按讚</strong>
-        或<strong className="font-medium text-stone-700">留言打氣</strong>
-        ，隨緣就好；都會進「與醫護互動」紀錄。
+        我們一起來為醫護打氣點讚，您的一個簡單的暖心動作，是對醫護的很大鼓勵〜！！
       </p>
 
       {!canPersist ? (

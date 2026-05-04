@@ -70,3 +70,27 @@ body {
     transform: scale(1.06);
   }
 }
+
+/* 醫護按讚／留言區首次出現：由下往上輕浮入（吸引注意不重） */
+@keyframes carepal-staff-footer-in {
+  from {
+    opacity: 0;
+    transform: translateY(1rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.carepal-staff-footer-enter {
+  animation: carepal-staff-footer-in 0.52s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .carepal-staff-footer-enter {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}

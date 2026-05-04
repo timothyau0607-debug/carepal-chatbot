@@ -799,8 +799,8 @@ function StaffSignalsFooter({
       <p
         className={
           compact
-            ? "text-[0.7rem] leading-snug text-stone-600"
-            : "text-xs leading-relaxed text-stone-600"
+            ? "text-sm leading-snug text-stone-600"
+            : "text-sm leading-relaxed text-stone-700"
         }
       >
         我們一起來為醫護打氣點讚，您的一個簡單的暖心動作，是對醫護的很大鼓勵〜！！

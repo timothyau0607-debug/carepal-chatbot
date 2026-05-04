@@ -207,7 +207,7 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
       setAssistantTyping(false);
       return;
     }
-    /** 先對完整回覆做一次顯示正規化，再逐字 slicing，打字完稿後與非 streaming 格式化一致（僅多出條列 ol 結構） */
+    /** 先對完整回覆做一次顯示正規化後再切片；輸出的段落與完稿後 FormattedMessageBody 同一套 pre-wrap（不再切換版面）。 */
     const displayFull = normalizeAssistantTextForDisplay(rawFull);
     if (displayFull.length === 0) {
       setMessages((prev) => {
@@ -535,41 +535,39 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
               : "可打字或點麥克風說話。例如：「阿公傍晚一直想出門怎麼辦？」"}
           </p>
         )}
-        {messages.map((m, i) => {
-          const streamingAssistant =
-            m.role === "assistant" &&
-            assistantTyping &&
-            i === messages.length - 1;
-          return (
+        {messages.map((m, i) => (
+          <div
+            key={i}
+            className={
+              m.role === "user"
+                ? "flex justify-end"
+                : "flex justify-start"
+            }
+          >
             <div
-              key={i}
               className={
                 m.role === "user"
-                  ? "flex justify-end"
-                  : "flex justify-start"
+                  ? "max-w-[min(22rem,calc(100%-0.25rem))] min-w-0 rounded-lg bg-teal-50/90 px-3 py-2 text-stone-800"
+                  : "max-w-[min(22rem,calc(100%-0.25rem))] min-w-0 rounded-lg bg-stone-100/90 px-3 py-2.5 text-stone-800"
               }
             >
-              <div
-                className={
-                  m.role === "user"
-                    ? "max-w-[min(22rem,calc(100%-0.25rem))] min-w-0 rounded-lg bg-teal-50/90 px-3 py-2 text-stone-800"
-                    : "max-w-[min(22rem,calc(100%-0.25rem))] min-w-0 rounded-lg bg-stone-100/90 px-3 py-2.5 text-stone-800"
-                }
-              >
-                <p className="text-xs text-stone-500">
-                  {m.role === "user" ? "你" : "小晴"} ·
-                </p>
-                <div className="mt-1 min-w-0">
-                  <FormattedMessageBody
-                    role={m.role}
-                    content={m.content}
-                    streaming={streamingAssistant}
-                  />
-                </div>
+              <p className="text-xs text-stone-500">
+                {m.role === "user" ? "你" : "小晴"} ·
+              </p>
+              <div className="mt-1 min-w-0">
+                <FormattedMessageBody
+                  role={m.role}
+                  content={m.content}
+                  assistantNormalizedPrefix={
+                    m.role === "assistant" &&
+                    assistantTyping &&
+                    i === messages.length - 1
+                  }
+                />
               </div>
             </div>
-          );
-        })}
+          </div>
+        ))}
         {loading && (
           <p className="flex items-center gap-2 text-stone-500">
             <Loader2 className="size-4 shrink-0 animate-spin" />

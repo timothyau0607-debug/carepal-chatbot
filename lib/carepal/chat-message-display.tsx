@@ -17,104 +17,43 @@ function renderInlineBold(text: string): ReactNode {
   return parts.map((part, i) => {
     if (part.length >= 4 && part.startsWith("**") && part.endsWith("**")) {
       return (
-        <strong
-          key={i}
-          className="font-semibold text-stone-900"
-        >
+        <strong key={i} className="font-semibold text-stone-900">
           {part.slice(2, -2)}
         </strong>
       );
     }
-    return <span key={i}>{part}</span>;
+    return <Fragment key={i}>{part}</Fragment>;
   });
 }
 
-const LIST_RE = /^\d{1,2}\.\s*(.+)$/;
-
-function isOrderedListBlock(block: string): boolean {
-  const lines = block.split("\n").map((l) => l.trim()).filter(Boolean);
-  if (lines.length < 2) return false;
-  return lines.every((l) => LIST_RE.test(l));
-}
-
 /**
- * 聊天氣泡內文：保留換行、條列、**粗體**（不當作 HTML 插入，僅此簡化語法）。
+ * 聊天氣泡內文：保留換行、**粗體**。
+ * 小晴一律 whitespace-pre-wrap，與打字動畫過程一致，避免完稿改用 &lt;p&gt; 後段落黏成一整塊。
  */
 export function FormattedMessageBody({
   role,
   content,
-  /** 逐字顯示中：content 須為「完整回覆經 normalizeAssistantTextForDisplay 後」的前綴；行內 **粗體** 與換行與完稿一致，條列仍於完稿後轉成 ol */
-  streaming = false,
+  /** 逐字顯示中：content 已是 normalizeAssistantTextForDisplay(完整回覆) 的前綴，勿再跑 normalize，避免前綴被改寫而跳動 */
+  assistantNormalizedPrefix = false,
 }: {
   role: "user" | "assistant";
   content: string;
-  streaming?: boolean;
+  assistantNormalizedPrefix?: boolean;
 }): ReactNode {
-  if (role === "assistant" && streaming) {
-    /** content 已由外層依「完整回覆先做顯示正規化」後再切片，此處不重跑 normalize */
-    return (
-      <div className="min-w-0 whitespace-pre-wrap break-words text-[15px] leading-relaxed text-stone-800 [overflow-wrap:anywhere]">
-        {renderInlineBold(content)}
-      </div>
-    );
-  }
-
-  const text =
-    role === "assistant"
-      ? normalizeAssistantTextForDisplay(content)
-      : content;
-
   if (role === "user") {
     return (
       <span className="whitespace-pre-line break-words text-[15px] leading-relaxed text-stone-800">
-        {text}
+        {content}
       </span>
     );
   }
 
-  const blocks = text.split(/\n{2,}/);
+  const text = assistantNormalizedPrefix
+    ? content
+    : normalizeAssistantTextForDisplay(content);
   return (
-    <div className="min-w-0 space-y-3 break-words text-[15px] leading-relaxed text-stone-800 [overflow-wrap:anywhere]">
-      {blocks.map((block, bi) => {
-        const trimmed = block.trim();
-        if (!trimmed) return null;
-
-        if (isOrderedListBlock(trimmed)) {
-          const lines = trimmed
-            .split("\n")
-            .map((l) => l.trim())
-            .filter(Boolean);
-          return (
-            <ol
-              key={bi}
-              className="list-inside list-decimal space-y-2 pl-0 marker:font-medium marker:text-stone-600"
-            >
-              {lines.map((line, li) => {
-                const m = line.match(LIST_RE);
-                const item = m ? m[1] : line;
-                return (
-                  <li key={li} className="pl-0.5">
-                    <span className="break-words">
-                      {renderInlineBold(item)}
-                    </span>
-                  </li>
-                );
-              })}
-            </ol>
-          );
-        }
-
-        return (
-          <p key={bi} className="mb-0 break-words last:mb-0">
-            {trimmed.split("\n").map((line, li) => (
-              <Fragment key={li}>
-                {li > 0 ? <br /> : null}
-                {renderInlineBold(line)}
-              </Fragment>
-            ))}
-          </p>
-        );
-      })}
+    <div className="min-w-0 whitespace-pre-wrap break-words text-[15px] leading-relaxed text-stone-800 [overflow-wrap:anywhere]">
+      {renderInlineBold(text)}
     </div>
   );
 }

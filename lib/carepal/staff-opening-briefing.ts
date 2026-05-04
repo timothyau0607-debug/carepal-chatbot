@@ -60,7 +60,7 @@ async function conversationalFromStaffFeedForDate(
   const dayWord = tense === "today" ? "今天" : "昨天";
 
   let s = "";
-  s += `對了～${dayWord}（${signalDate}）線上有 ${active.length} 位病友或家屬，順手留了「${dayWord}摘要」裡的情境或關心，我幫你們喵了一眼。`;
+  s += `對了～${dayWord}（${signalDate}）線上有 ${active.length} 位病友或家屬留了話。`;
 
   if (praiseLines > 0) {
     s += ` 裡頭大概有 ${praiseLines} 段，是真心在謝謝大家、或在誇團隊跟院這邊的照顧，聽了就覺得很值得跟大家分享。`;
@@ -219,7 +219,5 @@ export async function buildStaffOpeningBriefingForWelcome(
   }
 
   let out = [prefix, ...blocks].filter((x) => x.length > 0).join("\n\n");
-  out +=
-    `\n\n（以上都是線上自動摘來的暖心片段～不保證逐字對得起原文，就只是先讓你們知道自己的付出有被看見啦。）`;
   return out.slice(0, MAX_BRIEFING);
 }

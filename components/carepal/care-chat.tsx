@@ -469,7 +469,18 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
     ]
   );
 
+  /** 打字動畫中不捲到底；打字結束當下的 effect 亦不捲，避免長文打完又瞬間拉回底部 */
+  const skipScrollAfterAssistantTypingRef = useRef(false);
+
   useEffect(() => {
+    if (assistantTyping) {
+      skipScrollAfterAssistantTypingRef.current = true;
+      return;
+    }
+    if (skipScrollAfterAssistantTypingRef.current) {
+      skipScrollAfterAssistantTypingRef.current = false;
+      return;
+    }
     scrollListToEnd("smooth");
   }, [messages, loading, assistantTyping, scrollListToEnd]);
 

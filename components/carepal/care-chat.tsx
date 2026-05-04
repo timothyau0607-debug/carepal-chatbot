@@ -8,7 +8,7 @@ import {
   useState,
   forwardRef,
 } from "react";
-import { Loader2, MessageSquarePlus, Send, Sparkles, ThumbsUp, Volume2, VolumeX } from "lucide-react";
+import { Loader2, MessageSquarePlus, Send, ThumbsUp, Volume2, VolumeX } from "lucide-react";
 import { pickXiaoqingVoice, XIAOQING_TTS } from "@/lib/carepal/tts-voice-pick";
 import {
   FormattedMessageBody,
@@ -22,6 +22,7 @@ import {
   looksLikeDirectedStaffLetter,
   STAFF_LETTER_RECALL_WINDOW_MS,
 } from "@/lib/carepal/staff-letter-from-chat";
+import { shouldShowStaffFooterBar } from "@/lib/carepal/staff-cheer-offer";
 import type { UserRole } from "@/lib/carepal/user-role";
 import type { LocalProfileSnapshot } from "@/lib/carepal/local-profile";
 
@@ -284,24 +285,18 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
     []
   );
 
-  const persistStaffReaction = useCallback(
-    async (kind: "cheer" | "like") => {
-      if (!clientProfile || !userKey?.trim()) return;
-      const stamp = formatCarepalStaffSignalStamp();
-      const line =
-        kind === "cheer"
-          ? `[介面紀錄｜${stamp}] 經對話區向醫護／團隊「打氣」。`
-          : `[介面紀錄｜${stamp}] 經對話區對醫護／團隊「按讚」肯定。`;
-      await persistStaffCheerSnippet({
-        userKey,
-        userRole,
-        clientProfile,
-        line,
-      });
-      onReplyComplete?.();
-    },
-    [clientProfile, onReplyComplete, userKey, userRole]
-  );
+  const persistStaffLike = useCallback(async () => {
+    if (!clientProfile || !userKey?.trim()) return;
+    const stamp = formatCarepalStaffSignalStamp();
+    const line = `[介面紀錄｜${stamp}] 經對話區對醫護／團隊「按讚」肯定。`;
+    await persistStaffCheerSnippet({
+      userKey,
+      userRole,
+      clientProfile,
+      line,
+    });
+    onReplyComplete?.();
+  }, [clientProfile, onReplyComplete, userKey, userRole]);
 
   const persistStaffDedicatedLetter = useCallback(
     async (noteRaw: string) => {
@@ -541,14 +536,14 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
         )}
       </div>
 
-      {(userRole === "family" || userRole === "patient") && (
+      {shouldShowStaffFooterBar({ userRole, messages }) ? (
         <StaffSignalsFooter
           compact={compact}
           canPersist={Boolean(userKey?.trim() && clientProfile)}
-          onPersistCheer={persistStaffReaction}
+          onPersistLike={persistStaffLike}
           onPersistStaffLetter={persistStaffDedicatedLetter}
         />
-      )}
+      ) : null}
 
       {error && (
         <p className="text-center text-sm text-rose-600" role="alert">
@@ -636,19 +631,18 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
 type StaffSignalsFooterProps = {
   compact: boolean;
   canPersist: boolean;
-  onPersistCheer: (kind: "cheer" | "like") => Promise<void>;
+  onPersistLike: () => Promise<void>;
   onPersistStaffLetter: (note: string) => Promise<boolean>;
 };
 
 function StaffSignalsFooter({
   compact,
   canPersist,
-  onPersistCheer,
+  onPersistLike,
   onPersistStaffLetter,
 }: StaffSignalsFooterProps) {
-  const [cheerDone, setCheerDone] = useState(false);
   const [likeDone, setLikeDone] = useState(false);
-  const [cheerBusy, setCheerBusy] = useState(false);
+  const [likeBusy, setLikeBusy] = useState(false);
   const [letterExpanded, setLetterExpanded] = useState(false);
   const [letterText, setLetterText] = useState("");
   const [letterBusy, setLetterBusy] = useState(false);
@@ -656,18 +650,17 @@ function StaffSignalsFooter({
 
   const btnBase =
     compact
-      ? "min-h-[2.6rem] flex-col gap-0.5 rounded-lg px-2 py-1.5 text-[0.68rem] font-medium leading-snug sm:flex-row sm:gap-1"
-      : "min-h-[2.75rem] flex-col gap-1 rounded-xl px-2 py-2 text-xs font-medium sm:flex-row sm:gap-1.5";
+      ? "min-h-[2.85rem] flex-col gap-0.5 rounded-lg px-2 py-2 text-[0.7rem] font-medium leading-tight sm:flex-row sm:gap-1 sm:text-[0.68rem]"
+      : "min-h-[2.875rem] flex-col gap-1 rounded-xl px-3 py-2 text-xs font-medium sm:flex-row sm:gap-1.5";
 
-  const runCheer = async (kind: "cheer" | "like") => {
-    if (cheerBusy || !canPersist) return;
-    setCheerBusy(true);
+  const runLike = async () => {
+    if (likeBusy || !canPersist || likeDone) return;
+    setLikeBusy(true);
     try {
-      await onPersistCheer(kind);
-      if (kind === "cheer") setCheerDone(true);
-      else setLikeDone(true);
+      await onPersistLike();
+      setLikeDone(true);
     } finally {
-      setCheerBusy(false);
+      setLikeBusy(false);
     }
   };
 
@@ -690,53 +683,37 @@ function StaffSignalsFooter({
 
   return (
     <div
-      className={`shrink-0 rounded-xl border border-stone-200/90 bg-gradient-to-br from-teal-50/40 via-white to-amber-50/35 shadow-inner ${
-        compact ? "mt-2 px-2 py-2" : "px-3 py-2.5"
+      className={`shrink-0 rounded-xl border border-stone-200/90 bg-gradient-to-br from-teal-50/35 via-white to-stone-50/80 shadow-inner ${
+        compact ? "mt-2 px-2 py-2" : "px-3 py-2"
       }`}
       role="region"
-      aria-label="對醫護團隊打氣、按讚與留言"
+      aria-label="對醫護團隊按讚與留言打氣"
     >
-      <div
+      <p
         className={
           compact
-            ? "space-y-1.5 text-[0.7rem] leading-snug text-stone-700"
-            : "space-y-2 text-xs leading-relaxed text-stone-700"
+            ? "text-[0.7rem] leading-snug text-stone-600"
+            : "text-xs leading-relaxed text-stone-600"
         }
       >
-        <p>
-          想給醫護團隊一點正能量嗎？點個愛心或寫幾句話，小晴就能幫你傳達這份溫度喔！
-        </p>
-        <p>
-          隨手寫寫就好，完全沒壓力的。你的感謝對他們來說就是最大的鼓勵，我也會幫你把這些好話寫進紀錄裡。
-        </p>
-      </div>
+        想謝謝醫護的話，請用下方<strong className="font-medium text-stone-700">按讚</strong>
+        或<strong className="font-medium text-stone-700">留言打氣</strong>
+        ，隨緣就好；都會進「與醫護互動」紀錄。
+      </p>
 
       {!canPersist ? (
-        <p className="mt-2 text-[0.65rem] leading-snug text-amber-800/90">
-          取得訪客識別並載入畫像後，打氣／按讚／留言會一併寫進「與醫護互動」紀錄。
+        <p className="mt-1.5 text-[0.65rem] leading-snug text-amber-800/90">
+          載入訪客識別與畫像後才可寫進紀錄。
         </p>
       ) : null}
 
-      <div className={`mt-2.5 grid min-w-0 grid-cols-3 gap-1.5 sm:gap-2`}>
+      <div className="mt-2 grid min-w-0 grid-cols-2 gap-2">
         <button
           type="button"
-          disabled={!canPersist || cheerBusy || cheerDone}
-          aria-label="向醫護打氣"
-          onClick={() => void runCheer("cheer")}
-          className={`inline-flex min-w-0 items-center justify-center border border-amber-200/90 bg-amber-50/90 text-amber-950 shadow-sm transition hover:bg-amber-100 disabled:pointer-events-none disabled:opacity-45 ${btnBase}`}
-        >
-          <Sparkles
-            className={`${compact ? "size-4" : "size-[1.125rem]"} shrink-0 text-amber-600`}
-            aria-hidden
-          />
-          <span>{cheerDone ? "已打氣" : "打氣"}</span>
-        </button>
-        <button
-          type="button"
-          disabled={!canPersist || cheerBusy || likeDone}
+          disabled={!canPersist || likeBusy || likeDone}
           aria-label="按讚肯定醫護"
-          onClick={() => void runCheer("like")}
-          className={`inline-flex min-w-0 items-center justify-center border border-teal-200/90 bg-teal-50/90 text-teal-950 shadow-sm transition hover:bg-teal-100 disabled:pointer-events-none disabled:opacity-45 ${btnBase}`}
+          onClick={() => void runLike()}
+          className={`inline-flex min-w-0 items-center justify-center border border-teal-200/90 bg-teal-50 text-teal-950 shadow-sm transition hover:bg-teal-100 disabled:pointer-events-none disabled:opacity-45 ${btnBase}`}
         >
           <ThumbsUp
             className={`${compact ? "size-4" : "size-[1.125rem]"} shrink-0 text-teal-600`}
@@ -748,7 +725,7 @@ function StaffSignalsFooter({
           type="button"
           aria-expanded={letterExpanded}
           aria-controls="staff-dedicated-letter-panel"
-          aria-label="展開／收合給醫護的留言欄（非跟小晴對話）"
+          aria-label="展開或收合留言打氣（非跟小晴對話）"
           onClick={() =>
             setLetterExpanded((prev) => {
               const next = !prev;
@@ -763,44 +740,43 @@ function StaffSignalsFooter({
           }
           className={`inline-flex min-w-0 items-center justify-center shadow-sm transition ${btnBase} ${
             letterExpanded
-              ? "border-2 border-teal-600 bg-teal-50 text-teal-950"
-              : "border border-stone-200/90 bg-white/90 text-stone-800 hover:bg-stone-50"
+              ? "border-2 border-amber-500/90 bg-amber-50 text-amber-950"
+              : "border border-stone-200/90 bg-white text-stone-800 hover:bg-stone-50"
           }`}
         >
           <MessageSquarePlus
-            className={`${compact ? "size-4" : "size-[1.125rem]"} shrink-0 text-teal-600`}
+            className={`${compact ? "size-4" : "size-[1.125rem]"} shrink-0 text-amber-700`}
             aria-hidden
           />
-          <span>留言</span>
+          <span>留言打氣</span>
         </button>
       </div>
 
       {letterExpanded ? (
         <div
           id="staff-dedicated-letter-panel"
-          className={`mt-2.5 space-y-2 rounded-lg border border-dashed border-teal-300/80 bg-teal-50/50 p-2.5 ${
+          className={`mt-2 space-y-2 rounded-lg border border-dashed border-amber-200/90 bg-amber-50/40 p-2.5 ${
             compact ? "text-[0.68rem]" : "text-[0.8rem]"
           }`}
           role="group"
-          aria-label="獨立的醫護留言"
+          aria-label="獨立的留言打氣"
         >
-          <p className="font-semibold leading-snug text-teal-900">
-            「留言給醫護團隊」專區
+          <p className="font-semibold leading-snug text-amber-950">
+            留言／打氣（存紀錄，不是問小晴）
           </p>
           <p className="leading-relaxed text-stone-700">
-            這裡寫的文字<strong className="text-stone-900">會存進紀錄、不是問小晴喔</strong>
-            ，跟下面「輸入想問的照護問題⋯」的小白框不同；若你是在問衛教問題，請用下方和小晴對話。
+            衛教問題請改用下方對話輸入框跟小晴談。
           </p>
           <label className="block">
-            <span className="sr-only">給醫護團隊的留言</span>
+            <span className="sr-only">給醫護團隊的留言或打氣</span>
             <textarea
               id="staff-dedicated-letter-input"
-              className={`min-h-0 w-full resize-y rounded-lg border border-stone-200/90 bg-white px-2 py-2 text-stone-800 shadow-inner placeholder:text-stone-400 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500/40 ${
-                compact ? "min-h-[4.75rem]" : "min-h-[5.75rem]"
+              className={`min-h-0 w-full resize-y rounded-lg border border-stone-200/90 bg-white px-2 py-2 text-stone-800 shadow-inner placeholder:text-stone-400 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500/30 ${
+                compact ? "min-h-[4rem]" : "min-h-[4.75rem]"
               }`}
               maxLength={1500}
               rows={compact ? 3 : 4}
-              placeholder="例如：謝謝護理師昨晚很耐心⋯"
+              placeholder="打氣、感謝、想說的一句話⋯"
               value={letterText}
               onChange={(e) => setLetterText(e.target.value)}
               disabled={!canPersist || letterBusy}
@@ -813,7 +789,7 @@ function StaffSignalsFooter({
                 !canPersist || letterBusy || !letterText.trim().length
               }
               onClick={() => void submitLetter()}
-              className="inline-flex items-center justify-center gap-1 rounded-lg bg-teal-600 px-3 py-2 text-xs font-medium text-white shadow-sm transition hover:bg-teal-500 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-1 rounded-lg bg-amber-700 px-3 py-2 text-xs font-medium text-white shadow-sm transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {letterBusy ? (
                 <Loader2
@@ -821,7 +797,7 @@ function StaffSignalsFooter({
                   aria-hidden
                 />
               ) : null}
-              {letterBusy ? "送出中⋯" : "送出留言"}
+              {letterBusy ? "送出中⋯" : "送出"}
             </button>
             {letterOkHint ? (
               <span className="text-xs font-medium text-teal-800">

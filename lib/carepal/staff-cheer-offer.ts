@@ -2,6 +2,12 @@ import type { UserRole } from "@/lib/carepal/user-role";
 
 export type Msg = { role: string; content: string };
 
+/**
+ * 對話區**底部**固定的「醫護打氣／按讚／留言」列：累積幾則使用者訊息後才顯示
+ * （約來回兩三番後，勿一進頁就出現）。
+ */
+export const MIN_USER_MESSAGES_BEFORE_STAFF_FOOTER_VISIBLE = 3;
+
 /** 使用者累積幾則訊息後可出現首次打氣／按讚區（對話約兩三相談後） */
 const MIN_USER_MESSAGES_BEFORE_CHEER = 4;
 /** 上次顯示後至少相隔幾則使用者訊息再出現（僅第二次之後適用） */
@@ -73,6 +79,31 @@ export function shouldOfferStaffCheerBanner(params: {
     return false;
   }
 
+  return true;
+}
+
+/**
+ * 是否顯示對話區底部固定的醫護打氣／按讚／留言列。
+ * 與伺服器側 `shouldOfferStaffCheerBanner` 節流不同——此列為常駐區塊，僅限制**出現時機**
+ * （累積幾輪對話再加最近語氣不過於強烈對立時）。
+ */
+export function shouldShowStaffFooterBar(params: {
+  userRole: UserRole;
+  messages: Msg[];
+}): boolean {
+  if (params.userRole !== "family" && params.userRole !== "patient") {
+    return false;
+  }
+  const userMessageCount = params.messages.filter(
+    (m) => m.role === "user"
+  ).length;
+  if (userMessageCount < MIN_USER_MESSAGES_BEFORE_STAFF_FOOTER_VISIBLE) {
+    return false;
+  }
+  const lastMsgs = recentUserMessages(params.messages, 5);
+  if (lastMsgs.some((t) => userBubbleLooksClearlyNegative(t))) {
+    return false;
+  }
   return true;
 }
 

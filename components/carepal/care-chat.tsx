@@ -707,10 +707,10 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
                   role="dialog"
                   aria-modal="true"
                   aria-labelledby="carepal-chat-composer-title"
-                  className="fixed bottom-0 left-0 right-0 z-[660] mx-auto flex max-h-[calc(100dvh-16px-env(safe-area-inset-bottom,0px))] max-w-[100vw] min-h-0 flex-col gap-3 rounded-t-2xl border border-stone-200/90 bg-white px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] shadow-[0_-14px_40px_-12px_rgba(0,0,0,0.2)]"
+                  className="fixed bottom-0 left-0 right-0 z-[660] mx-auto flex max-h-[min(calc(100dvh-16px-env(safe-area-inset-bottom,0px)),28rem)] max-w-[100vw] min-h-0 flex-col gap-2 rounded-t-2xl border border-stone-200/90 bg-white px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom,0px))] shadow-[0_-14px_40px_-12px_rgba(0,0,0,0.2)]"
                   style={{ touchAction: "manipulation" }}
                 >
-                  <div className="flex shrink-0 items-start justify-between gap-3 border-b border-stone-100 pb-3">
+                  <div className="flex shrink-0 items-start justify-between gap-3 border-b border-stone-100 pb-2">
                     <p
                       id="carepal-chat-composer-title"
                       className="text-base font-semibold text-stone-800"
@@ -727,20 +727,20 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
                   </div>
                   <textarea
                     ref={composerTextareaRef}
-                    className="min-h-[10rem] w-full flex-1 resize-y rounded-xl border border-stone-200 bg-stone-50/40 px-3 py-2.5 text-base leading-snug text-stone-900 shadow-inner placeholder:text-stone-400 focus:border-teal-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/35"
+                    className="max-h-[min(20rem,50svh)] min-h-[6.75rem] w-full shrink-0 resize-y overflow-y-auto rounded-xl border border-stone-200 bg-stone-50/40 px-3 py-2 text-sm leading-snug text-stone-900 shadow-inner placeholder:text-stone-400 focus:border-teal-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/35"
                     placeholder="想問或想說的照護問題…（可換行）"
                     maxLength={800}
-                    rows={10}
+                    rows={4}
                     value={text}
                     onChange={(e) => setText(e.target.value)}
                     spellCheck={false}
                     disabled={loading || assistantTyping}
                     enterKeyHint="done"
                   />
-                  <div className="flex shrink-0 gap-2 pt-1">
+                  <div className="flex shrink-0 gap-2 pt-0.5">
                     <button
                       type="button"
-                      className="min-h-[2.85rem] flex-1 rounded-xl border border-stone-200 bg-white font-medium text-stone-700 shadow-sm transition hover:bg-stone-50"
+                      className="min-h-[2.75rem] flex-1 rounded-xl border border-stone-200 bg-white text-sm font-medium text-stone-700 shadow-sm transition hover:bg-stone-50"
                       onClick={() => setMobileComposerOpen(false)}
                     >
                       取消
@@ -750,7 +750,7 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
                       disabled={
                         loading || assistantTyping || !text.trim().length
                       }
-                      className="min-h-[2.85rem] flex-[1.2] rounded-xl bg-teal-600 font-medium text-white shadow-sm transition hover:bg-teal-500 disabled:cursor-not-allowed disabled:opacity-45"
+                      className="min-h-[2.75rem] flex-[1.2] rounded-xl bg-teal-600 text-sm font-medium text-white shadow-sm transition hover:bg-teal-500 disabled:cursor-not-allowed disabled:opacity-45"
                       onClick={() => submitFromMobileComposer()}
                     >
                       送出

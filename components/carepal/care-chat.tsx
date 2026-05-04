@@ -8,7 +8,7 @@ import {
   useState,
   forwardRef,
 } from "react";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import {
   ChevronDown,
   ChevronUp,
@@ -140,22 +140,6 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [compact, mobileComposerOpen]);
-
-  useEffect(() => {
-    if (!compact || !mobileComposerOpen) return;
-    const el = composerTextareaRef.current;
-    if (!el) return;
-    const t = window.setTimeout(() => {
-      try {
-        el.focus();
-        const len = el.value.length;
-        el.setSelectionRange(len, len);
-      } catch {
-        el.focus();
-      }
-    }, 100);
-    return () => window.clearTimeout(t);
   }, [compact, mobileComposerOpen]);
 
   useEffect(() => {
@@ -669,7 +653,18 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
               aria-label="開啟文字輸入"
               onClick={() => {
                 if (loading || assistantTyping) return;
-                setMobileComposerOpen(true);
+                flushSync(() => {
+                  setMobileComposerOpen(true);
+                });
+                const el = composerTextareaRef.current;
+                if (!el) return;
+                try {
+                  el.focus({ preventScroll: true });
+                  const len = el.value.length;
+                  el.setSelectionRange(len, len);
+                } catch {
+                  el.focus({ preventScroll: true });
+                }
               }}
               className={`flex min-h-[2.75rem] min-w-0 flex-1 cursor-pointer rounded-xl border border-stone-200 bg-white px-3 py-2 text-left shadow-sm transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-55 ${
                 text.trim().length === 0

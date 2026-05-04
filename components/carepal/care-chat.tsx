@@ -107,8 +107,6 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
     null
   );
   const listRef = useRef<HTMLDivElement>(null);
-  /** 最後一則使用者訊息的外層列，用來對齊到對話區頂端 */
-  const latestUserMessageRowRef = useRef<HTMLDivElement | null>(null);
   /** 使用者送出後：下一幀將其氣泡捲至清單頂緣（小晴在下面長出） */
   const pendingAlignLatestUserBubbleRef = useRef(false);
   /** 自使用者送出後、小晴開始打字前：不要自動捲到底（避免蓋過「問題置頂」） */
@@ -293,9 +291,15 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
 
   const alignLatestUserMessageToTop = useCallback(() => {
     const list = listRef.current;
-    const row = latestUserMessageRowRef.current;
-    if (!list || !row) return;
-    /** 對話框頂緣留白（對齊視覺，略小於 Tailwind padding） */
+    if (!list) return;
+    const row = list.querySelector<HTMLElement>(
+      "[data-carepal-latest-user-pin]"
+    );
+    if (!row) return;
+
+    /** 對齊到最近捲動父層的可視區頂部，再細調留白 */
+    row.scrollIntoView({ block: "start", inline: "nearest", behavior: "auto" });
+
     const insetPx = compact ? 6 : 8;
     const dy =
       row.getBoundingClientRect().top -
@@ -303,7 +307,10 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
       insetPx;
     const nextTop = list.scrollTop + dy;
     const maxTop = Math.max(0, list.scrollHeight - list.clientHeight);
-    list.scrollTo({ top: Math.max(0, Math.min(nextTop, maxTop)), behavior: "auto" });
+    list.scrollTo({
+      top: Math.max(0, Math.min(nextTop, maxTop)),
+      behavior: "auto",
+    });
   }, [compact]);
 
   /** API 已取得完整回覆時立即播出（不依賴逐字顯示結束），較接近即時對話 */
@@ -510,7 +517,14 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
     if (!pendingAlignLatestUserBubbleRef.current) return;
     pendingAlignLatestUserBubbleRef.current = false;
     alignLatestUserMessageToTop();
-  }, [messages, alignLatestUserMessageToTop]);
+    queueMicrotask(() => {
+      alignLatestUserMessageToTop();
+    });
+    window.requestAnimationFrame(() => {
+      alignLatestUserMessageToTop();
+      window.requestAnimationFrame(() => alignLatestUserMessageToTop());
+    });
+  }, [messages, loading, alignLatestUserMessageToTop]);
 
   useEffect(() => {
     const hasAnyUserBubble = messages.some((m) => m.role === "user");
@@ -582,8 +596,8 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
         aria-label="對話內容"
         className={
           compact
-            ? "min-h-0 min-w-0 flex-1 space-y-2 overflow-y-auto overflow-x-hidden overscroll-y-contain rounded-xl border border-stone-200/90 bg-white/95 p-2.5 text-sm text-stone-800 shadow-inner"
-            : "h-80 min-h-0 shrink-0 space-y-3 overflow-y-auto overflow-x-hidden overscroll-y-contain scroll-smooth rounded-xl border border-stone-200/90 bg-white/90 p-3 text-sm text-stone-800 shadow-inner [scrollbar-gutter:stable]"
+            ? "relative min-h-0 min-w-0 flex-1 space-y-2 overflow-y-auto overflow-x-hidden overscroll-y-contain rounded-xl border border-stone-200/90 bg-white/95 p-2.5 text-sm text-stone-800 shadow-inner"
+            : "relative h-80 min-h-0 shrink-0 space-y-3 overflow-y-auto overflow-x-hidden overscroll-y-contain scroll-smooth rounded-xl border border-stone-200/90 bg-white/90 p-3 text-sm text-stone-800 shadow-inner [scrollbar-gutter:stable]"
         }
       >
         {messages.length === 0 && (
@@ -596,13 +610,11 @@ const CareChatInner = forwardRef<CareChatHandle, Props>(function CareChat(
         {messages.map((m, i) => (
           <div
             key={i}
-            ref={
-              m.role === "user" &&
-              i === lastUserMessageIndex &&
-              lastUserMessageIndex >= 0
-                ? latestUserMessageRowRef
-                : undefined
-            }
+            {...(m.role === "user" &&
+            i === lastUserMessageIndex &&
+            lastUserMessageIndex >= 0
+              ? { "data-carepal-latest-user-pin": "" }
+              : {})}
             className={
               m.role === "user"
                 ? "flex justify-end"
